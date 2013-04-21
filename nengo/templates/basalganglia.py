@@ -2,7 +2,7 @@ def make_basal_ganglia(net, name='Basal Ganglia', dimensions=1, neurons=100,
                        tau_ampa=0.002, tau_gaba=0.008, output_weight=1, 
                        radius=1.5):
     """This function creates a subnetwork with a model of the basal ganglia
-    based off the paper (Gurney, Prescott, & Redgrave, 2001)
+    based off this paper (Gurney, Prescott, & Redgrave, 2001)
     
     :param NetWork net:
     :param string name:
