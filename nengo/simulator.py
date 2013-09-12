@@ -371,7 +371,7 @@ class SimLIFRate(Operator):
 class Simulator(object):
     """Reference simulator for models.
     """
-    def __init__(self, model):
+    def __init__(self, model, real_time=False):
         if not hasattr(model, 'dt'):
             raise ValueError("Model does not appear to be built. "
                              "See Model.prep_for_simulation.")
@@ -389,6 +389,7 @@ class Simulator(object):
         self._steps = [node.make_step(self._sigdict, model.dt)
             for node in self._step_order]
 
+        self.real_time = real_time
         self.n_steps = 0
         self.probe_outputs = dict((probe, []) for probe in model.probes)
 
@@ -568,11 +569,29 @@ class Simulator(object):
         steps = int(time_in_seconds // self.model.dt)
         logger.debug("Running %s for %f seconds, or %d steps",
                      self.model.name, time_in_seconds, steps)
-        self.run_steps(steps)
+        if self.real_time:
+            self.run_real_time(steps)
+        else:
+            self.run_steps(steps)
 
     def run_steps(self, steps):
         """Simulate for the given number of `dt` steps."""
         for i in xrange(steps):
+            if i % 1000 == 0:
+                logger.debug("Step %d", i)
+            self.step()
+    
+    def run_real_time(self, steps):
+        """Simulate for the given number of `dt` steps."""
+        tol = 0.0001 #FIXME: make sure this number is reasonable
+        t_old = time.time()
+        for i in xrange(steps):
+            t_new = time.time()
+            elapsed = t_new - t_old
+            t_old = t_new
+            if elapsed + tol < self.model.dt:
+                #TODO: add a tolerance to account for delay on the sleep function
+                time.sleep( self.model.dt - elapsed - tol )
             if i % 1000 == 0:
                 logger.debug("Step %d", i)
             self.step()
