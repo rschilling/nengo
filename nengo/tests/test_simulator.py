@@ -3,7 +3,7 @@ import numpy as np
 import nengo
 import nengo.simulator as simulator
 import nengo.core as core
-from nengo.core import Direct, Signal, Constant
+from nengo.core import Direct, ZeroVector, Constant
 from nengo.tests.helpers import SimulatorTestCase, unittest
 
 import logging
@@ -31,13 +31,13 @@ class TestSimulator(SimulatorTestCase):
 
     def test_signal_indexing_1(self):
         m = nengo.Model("test_signal_indexing_1")
-        one = m.add(Signal(1, name='a'))
-        two = m.add(Signal(2, name='b'))
-        three = m.add(Signal(3, name='c'))
+        one = m.add(ZeroVector(1, name='a'))
+        two = m.add(ZeroVector(2, name='b'))
+        three = m.add(ZeroVector(3, name='c'))
 
-        m._operators += [simulator.ProdUpdate(core.Constant(1), three[0:1], core.Constant(0), one)]
-        m._operators += [simulator.ProdUpdate(core.Constant(2.0), three[1:], core.Constant(0), two)]
-        m._operators += [simulator.DotInc(core.Constant([[0,0,1], [0,1,0], [1,0,0]]), three, m._get_output_view(three))]
+        m._operators += [simulator.ProdUpdate(Constant(1), three[0:1], Constant(0), one)]
+        m._operators += [simulator.ProdUpdate(Constant(2.0), three[1:], Constant(0), two)]
+        m._operators += [simulator.DotInc(Constant([[0,0,1], [0,1,0], [1,0,0]]), three, m._get_output_view(three))]
 
         sim = m.simulator(sim_class=self.Simulator)
         memo = sim.model.memo
@@ -53,12 +53,12 @@ class TestSimulator(SimulatorTestCase):
 
     def test_simple_direct_mode(self):
         m = nengo.Model("test_simple_direct_mode")
-        sig = m.add(Signal(n=1, name='sig'))
+        sig = m.add(ZeroVector(1, name='sig'))
 
         pop = m.add(Direct(n_in=1, n_out=1, fn=np.sin))
         
-        m._operators += [simulator.DotInc(core.Constant([[1.0]]), m.t, pop.input_signal)]
-        m._operators += [simulator.ProdUpdate(core.Constant([[1.0]]), pop.output_signal, core.Constant(0), sig)]
+        m._operators += [simulator.DotInc(Constant([[1.0]]), m.t, pop.input_signal)]
+        m._operators += [simulator.ProdUpdate(Constant([[1.0]]), pop.output_signal, Constant(0), sig)]
 
         sim = m.simulator(sim_class=self.Simulator)
         #sim.print_op_groups()
@@ -79,7 +79,7 @@ class TestSimulator(SimulatorTestCase):
 
     def test_encoder_decoder_pathway(self):
         m = nengo.Model("")
-        foo = m.add(Signal(1, name='foo'))
+        foo = m.add(ZeroVector(1, name='foo'))
         pop = m.add(Direct(n_in=2, n_out=2, fn=lambda x: x + 1, name='pop'))
         
         decoders = np.asarray([.2,.1])
@@ -111,7 +111,7 @@ class TestSimulator(SimulatorTestCase):
 
     def test_encoder_decoder_with_views(self):
         m = nengo.Model("")
-        foo = m.add(Signal(1, name='foo'))
+        foo = m.add(ZeroVector(1, name='foo'))
         pop = m.add(Direct(n_in=2, n_out=2, fn=lambda x: x + 1, name='pop'))
 
         decoders = np.asarray([.2,.1])
