@@ -400,15 +400,15 @@ class PassthroughNode(object):
                                   name=self.name + ".signal")
         model.add(self.signal)
 
-        # Set up probes
         for probe in self.probes['output']:
-            probe.sig = self.signal
-            model.add(probe)
+            probe.dimensions = self.signal.n
+
 
 
     def probe(self, to_probe='output', sample_every=0.001, filter=None):
         if to_probe == 'output':
-            p = core.Probe(None, sample_every)
+            p = Probe(self.name+'.output', sample_every)
+            self.connect_to(p, filter=filter)
             self.probes['output'].append(p)
         return p
 
@@ -470,6 +470,8 @@ class ConstantNode(object):
         for probe in self.probes['output']:
             probe.sig = self.signal
             model.add(probe)
+            
+            
 
 
 class Node(object):
@@ -560,6 +562,7 @@ class Node(object):
 
     def build(self, model, dt):
         """TODO"""
+        
         # Set up signals
         self.signal = core.Signal(self.dimensions,
                                   name=self.name + ".signal")
