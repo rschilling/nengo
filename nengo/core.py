@@ -11,10 +11,9 @@ import copy
 import logging
 
 import numpy as np
-import simulator as sim
 
-import copy
 import exception as exc
+import simulator as sim
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +29,10 @@ assert_named_signals = False
 
 
 def filter_coefs(pstc, dt):
+    # TODO(arvoelke): Document and move to more appropriate location.
     pstc = max(pstc, dt)
     decay = np.exp(-dt / pstc)
     return decay, (1.0 - decay)
-
-
-class ShapeMismatch(ValueError):
-    pass
-
-
-class TODO(NotImplementedError):
-    """Potentially easy NotImplementedError"""
-    pass
 
 
 class SignalView(object):
@@ -49,7 +40,9 @@ class SignalView(object):
     # TODO(arvoelke): Document methods.
 
     def __init__(self, base, shape, elemstrides, offset, name=None):
-        assert is_signal(base)
+        if not is_signal(base):
+            raise ValueError(
+                'base object (%s) must be derived from SignalView' % base)
         self._base = base
         if isinstance(shape, int):
             shape = (shape,)
@@ -157,13 +150,11 @@ class SignalView(object):
     def transpose(self, neworder=None):
         if neworder:
             raise NotImplementedError()
-        return SignalView(
-                self.base,
-                reversed(self.shape),
-                reversed(self.elemstrides),
-                self.offset,
-                self.name + '.T'
-                )
+        return SignalView(self._base,
+                          reversed(self._shape),
+                          reversed(self._elemstrides),
+                          self._offset,
+                          '%s.T' % self.name)
 
     @property
     def T(self):
@@ -319,21 +310,23 @@ class SignalView(object):
 
 
 class Signal(SignalView):
-    """Interpretable, multi-dimensional valued quantity within NEF."""
+    """Binds an initial value with a SignalView."""
 
-    def __init__(self, value, dtype, shape, elemstrides, offset, name):
+    def __init__(self, value, elemstrides, offset, name):
+        """Initializes from SignalView, getting shape from value.
+
+        Parameters
+        ---------
+        value: np.ndarray
+            Initial value for the Signal. Can only be changed if same shape.
+        
+        For remaining parameters, see SignalView.
+        """
         if assert_named_signals:
             assert name
         self._value = value
-        self._dtype = np.dtype(dtype)
-        super(Signal, self).__init__(self, shape, (1,), 0, name)
-
-    @classmethod
-    def make_vector(cls, n, name=None):
-        return cls(np.zeros(n), np.float64, (n,), (1,), 0, name)
-
-    @classmethod
-    def make_constant(cls, x, 
+        super(Signal, self).__init__(
+            self, value.shape, elemstrides, offset, name)
 
     def __str__(self):
         return 'Signal(%dD, %s)' % (self.size, self.name)
@@ -343,11 +336,18 @@ class Signal(SignalView):
 
     @property
     def dtype(self):
-        return self._dtype
+        return self._value.dtype
 
     @property
     def value(self):
         return self._value
+
+    @value.setter
+    def value(self, value):
+        if value.shape != self._value.shape:
+            # Signals must not alter their shape after construction!
+            raise exc.ShapeMismatch(value.shape, self._value.shape)
+        self._value = value 
 
     def add_to_model(self, model):
         model.signals.append(self)
@@ -357,53 +357,35 @@ class Signal(SignalView):
             '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
             'name' : self.name,
             'size' : self.size,
-            'dtype' : str(self._dtype),
+            'value' : list(self.value),
+            'dtype' : str(self.dtype),
         }
 
 
-class Constant(SignalView):
-    """Binds a constant value with a signal."""
+class ZeroVector(Signal):
+    """Initializes the signal with a zero vector of length n."""
 
-    def __init__(self, value, dtype=np.float64, name=None):
-        self._dtype = np.dtype(dtype)
-        self._value = np.asarray(value)
-        s = np.asarray(self._value.strides)
-        elemstrides = tuple(map(int, s / self._dtype.itemsize))
-        super(Constant, self).__init__(
-            self, self._value.shape, elemstrides, 0, name)
+    def __init__(self, n, name=None):
+        super(Zero, self).__init__(np.zeros(n), (1,), 0, name)
 
-    def __str__(self):
-        return 'Constant(%s, %s)' % (self._value, self.name)
 
-    def __repr__(self):
-        return str(self)
+class Constant(Signal):
+    """Initializes the signal with a constant numpy array."""
 
-    @property
-    def value(self):
-        return self._value
-
-    @property
-    def dtype(self):
-        return self._dtype
-
-    def add_to_model(self, model):
-        model.signals.append(self)
-
-    def to_json(self):
-        return {
-            '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
-            'name' : self.name,
-            'value' : self._value.tolist(),
-        }
+    def __init__(self, value, name=None):
+        # Determine the correct elemstrides.
+        s = np.asarray(value.strides)
+        elemstrides = tuple(map(int, s / value.dtype.itemsize))
+        super(Constant, self).__init__(value, elemstrides, 0, name)
 
 
 def is_signal(sig):
-    """Return True `iff` sig is (or is derived from) a SignalView."""
+    """Returns True iff `sig` is (or is derived from) a SignalView."""
     return isinstance(sig, SignalView)
 
 
 def is_constant(sig):
-    """Return True `iff` sig is (or is a view of) a Constant signal."""
+    """Returns True iff `sig` is (or is a view of) a Constant signa."""
     return isinstance(sig.base, Constant)
 
 
@@ -428,214 +410,6 @@ class Probe(object):
             '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
             'sig' : self.sig.name,
             'dt' : self.dt,
-        }
-
-
-class Transform(object):
-    """A linear transform from a decoded signal to the signals buffer."""
-
-    def __init__(self, alpha, insig, outsig):
-        if is_constant(outsig):
-            raise TypeError('transform destination is constant')
-        if is_constant(insig):
-            raise TypeError('constant input (use filter instead)')
-
-        # TODO(arvoelke): Deduplicate __init__ code between Transform and Filter
-        name = '%s>%s.tf_alpha' % (insig.name, outsig.name)
-
-        self.alpha_signal = Constant(alpha, name=name)
-        self.insig = insig
-        self.outsig = outsig
-        if self.alpha_signal.size == 1:
-            if self.insig.shape != self.outsig.shape:
-                raise exc.ShapeMismatch(self.alpha_signal.shape,
-                                        self.insig.shape,
-                                        self.outsig.shape)
-        elif self.alpha_signal.shape != self.outsig.shape + self.insig.shape:
-            raise exc.ShapeMismatch(
-                self.alpha_signal.shape, self.insig.shape, self.outsig.shape)
-
-    def __str__(self):
-        return 'Transform (id %d) from %s to %s' % (
-            id(self), self.insig, self.outsig)
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def alpha(self):
-        return self.alpha_signal.value
-
-    def add_to_model(self, model):
-        model.signals.append(self.alpha_signal)
-        dst = model._get_output_view(self.outsig)
-
-        # XXX: Complicated lookup still necessary?
-        if self.insig in model._decoder_outputs:
-            insig = model._decoder_outputs[self.insig]
-        elif self.insig.base in model._decoder_outputs:
-            insig = self.insig.view_like_self_of(
-                model._decoder_outputs[self.insig.base])
-        else:
-            insig = self.insig
-
-        model._operators.append(
-            sim.DotInc(self.alpha_signal, insig, dst,
-                       tag='transform'))
-
-    def to_json(self):
-        return {
-            '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
-            'alpha' : self.alpha.tolist(),
-            'insig' : self.insig.name,
-            'outsig' : self.outsig.name,
-        }
-
-
-class Filter(object):
-    """A linear transform from signals[t-1] to signals[t]."""
-
-    def __init__(self, alpha, oldsig, newsig):
-        if is_constant(newsig):
-            raise TypeError('filter destination is constant')
-
-        name = '%s>%s.f_alpha' % (oldsig.name, newsig.name)
-
-        self.alpha_signal = Constant(alpha, name=name)
-        self.oldsig = oldsig
-        self.newsig = newsig
-        if self.alpha_signal.size == 1:
-            if self.oldsig.shape != self.newsig.shape:
-                raise exc.ShapeMismatch(self.alpha_signal.shape,
-                                        self.oldsig.shape,
-                                        self.newsig.shape)
-        elif self.alpha_signal.shape != self.newsig.shape + self.oldsig.shape:
-            raise exc.ShapeMismatch(
-                self.alpha_signal.shape, self.oldsig.shape, self.newsig.shape)
-
-    def __str__(self):
-        return 'Filter (id %d) from %s to %s' % (
-            id(self), self.oldsig, self.newsig)
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def alpha(self):
-        return self.alpha_signal.value
-
-    def add_to_model(self, model):
-        model.signals.append(self.alpha_signal)
-        dst = model._get_output_view(self.newsig)
-
-        model._operators.append(
-            sim.DotInc(self.alpha_signal, self.oldsig, dst,
-                       tag='transform'))
-
-    def to_json(self):
-        return {
-            '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
-            'alpha' : self.alpha.tolist(),
-            'oldsig' : self.oldsig.name,
-            'newsig' : self.newsig.name,
-        }
-
-
-class Encoder(object):
-    """A linear transform from a signal to a population."""
-
-    def __init__(self, sig, pop, weights):
-        self.sig = sig
-        self.pop = pop
-        weights = np.asarray(weights)
-        if weights.shape != (pop.n_in, sig.size):
-            raise ValueError('weight shape', weights.shape)
-
-        name = '%s.encoders' % sig.name
-        self.weights_signal = Constant(weights, name=name)
-
-    def __str__(self):
-        return 'Encoder (id %d) of %s to %s' % (id(self), self.sig, self.pop)
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def weights(self):
-        return self.weights_signal.value
-
-    def add_to_model(self, model):
-        model.signals.append(self.weights_signal)
-        model._operators.append(
-            sim.DotInc(
-                self.sig,
-                self.weights_signal,
-                self.pop.input_signal,
-                xT=True,
-                tag='encoder'))
-
-
-    def to_json(self):
-        return {
-            '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
-            'sig' : self.sig.name,
-            'pop' : self.pop.name,
-            'weights' : self.weights.tolist(),
-        }
-
-
-class Decoder(object):
-    """A linear transform from a population to a signal."""
-
-    def __init__(self, pop, sig, weights):
-        self.pop = pop
-        self.sig = sig
-        weights = np.asarray(weights)
-        if weights.shape != (sig.size, pop.n_out):
-            raise ValueError('weight shape', weights.shape)
- 
-        name = '%s.decoders' % sig.name
-        self.weights_signal = Constant(weights, name=name)
-
-    def __str__(self):
-        return 'Decoder (id %d) of %s to %s' % (id(self), self.pop, self.sig)
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def weights(self):
-        return self.weights_signal.value
-
-    def add_to_model(self, model):
-        model.signals.append(self.weights_signal)
-        if self.sig.base not in model._decoder_outputs:
-            sigbase = Signal(self.sig.base.size,
-                             name='%s-decbase' % self.sig.name)
-            model.signals.append(sigbase)
-            model._decoder_outputs[self.sig.base] = sigbase
-            model._operators.append(sim.Reset(sigbase))
-        else:
-            sigbase = model._decoder_outputs[self.sig.base]
-        if self.sig == self.sig.base:
-            dec_sig = sigbase
-        else:
-            dec_sig = self.sig.view_like_self_of(sigbase)
-        model._decoder_outputs[self.sig] = dec_sig
-        model._operators.append(
-            sim.DotInc(
-                self.pop.output_signal,
-                self.weights_signal,
-                dec_sig,
-                xT=True,
-                tag='Decoder'))
-
-    def to_json(self):
-        return {
-            '__class__' : '%s.%s' % (self.__module__, self.__class__.__name__),
-            'pop' : self.pop.name,
-            'sig' : self.sig.name,
-            'weights' : self.weights.tolist(),
         }
 
 
@@ -676,7 +450,7 @@ class Direct(Nonlinearity):
 
         self.input_signal = Signal(n_in, name='%s.input' % name)
         self.output_signal = Signal(n_out, name='%s.output' % name)
-        self.bias_signal = Constant(np.zeros(n_in), name='%s.bias' % name)
+        self.bias_signal = Signal.make_zero(n_in, name='%s.bias' % name)
 
         self.n_in = n_in
         self.n_out = n_out
@@ -720,9 +494,10 @@ class _LIFBase(Nonlinearity):
     def __init__(self, n_neurons, tau_rc=0.02, tau_ref=0.002, name=None):
         if name is None:
             name = '<%s%d>' % (self.__class__.__name__, id(self))
-        self.input_signal = Signal(n_neurons, name='%s.input' % name)
-        self.output_signal = Signal(n_neurons, name='%s.output' % name)
-        self.bias_signal = Constant(np.zeros(n_neurons), name='%s.bias' % name)
+        self.input_signal = Signal.make_zero(n_neurons, name='%s.input' % name)
+        self.output_signal = Signal.make_zero(n_neurons,
+                                              name='%s.output' % name)
+        self.bias_signal = Signal.make_zero(n_neurons, name='%s.bias' % name)
 
         self.name = name
         self._n_neurons = n_neurons
@@ -837,6 +612,7 @@ class LIFRate(_LIFBase):
             np.seterr(**old)
         return r
                 
+
 class LIF(_LIFBase):
     """LIF Spiking Neuron."""
 
@@ -845,8 +621,8 @@ class LIF(_LIFBase):
     def __init__(self, n_neurons, upsample=1, **kwargs):
         super(LIF, self).__init__(n_neurons, **kwargs)
         self.upsample = upsample
-        self.voltage = Signal(n_neurons)
-        self.refractory_time = Signal(n_neurons)
+        self.voltage = Signal.make_zero(n_neurons)
+        self.refractory_time = Signal.make_zero(n_neurons)
 
     def add_to_model(self, model):
         # XXX: do we still need to append signals to model?
