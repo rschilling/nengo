@@ -31,9 +31,9 @@ class TestSimulator(SimulatorTestCase):
 
     def test_signal_indexing_1(self):
         m = nengo.Model("test_signal_indexing_1")
-        one = m.add(Signal(n=1, name='a'))
-        two = m.add(Signal(n=2, name='b'))
-        three = m.add(Signal(n=3, name='c'))
+        one = m.add(Signal(1, name='a'))
+        two = m.add(Signal(2, name='b'))
+        three = m.add(Signal(3, name='c'))
 
         m._operators += [simulator.ProdUpdate(core.Constant(1), three[0:1], core.Constant(0), one)]
         m._operators += [simulator.ProdUpdate(core.Constant(2.0), three[1:], core.Constant(0), two)]
@@ -79,7 +79,7 @@ class TestSimulator(SimulatorTestCase):
 
     def test_encoder_decoder_pathway(self):
         m = nengo.Model("")
-        foo = m.add(Signal(n=1, name='foo'))
+        foo = m.add(Signal(1, name='foo'))
         pop = m.add(Direct(n_in=2, n_out=2, fn=lambda x: x + 1, name='pop'))
         
         decoders = np.asarray([.2,.1])
@@ -111,7 +111,7 @@ class TestSimulator(SimulatorTestCase):
 
     def test_encoder_decoder_with_views(self):
         m = nengo.Model("")
-        foo = m.add(Signal(n=1, name='foo'))
+        foo = m.add(Signal(1, name='foo'))
         pop = m.add(Direct(n_in=2, n_out=2, fn=lambda x: x + 1, name='pop'))
 
         decoders = np.asarray([.2,.1])

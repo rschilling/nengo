@@ -19,10 +19,8 @@ class SignalConnection(object):
     filter : type
         description
     transform
-
     probes : type
         description
-
     """
     def __init__(self, pre, post, **kwargs):
         self.pre = pre

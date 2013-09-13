@@ -114,7 +114,7 @@ class Model(object):
         # -- hacky helper used by Transform.add_to_model and Filter.add_to_model
         if obj.base not in self._next_signals:
             self._next_signals[obj.base] = core.Signal(
-                obj.base.n,
+                obj.base.shape,
                 name=obj.base.name + '-out')
             self._operators.append(
                 simulator.Reset(self._next_signals[obj.base]))
@@ -127,9 +127,8 @@ class Model(object):
                      tag='back-copy %s' % str(obj.base)))
             
         if simulator.is_view(obj):
-            self._next_signals[obj] = obj.view_like_self_of(
-                self._next_signals[obj.base])
-            
+            self._next_signals[obj] = obj.rebase(self._next_signals[obj.base])
+
         return self._next_signals[obj]
 
     def __str__(self):

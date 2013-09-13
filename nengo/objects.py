@@ -323,7 +323,7 @@ class Ensemble(object):
         """
         # Set up signal
         if signal is None:
-            self.signal = core.Signal(n=self.dimensions,
+            self.signal = core.Signal(self.dimensions,
                                       name=self.name + ".signal")
             model.add(self.signal)
         else:
@@ -517,7 +517,7 @@ class Node(object):
 
         # Set up probes
         for probe in self.probes['output']:
-            probe.dimensions = self.nonlinear.output_signal.n
+            probe.dimensions = self.nonlinear.output_signal.size
 
 
 class Probe(object):
