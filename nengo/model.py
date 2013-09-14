@@ -284,8 +284,8 @@ class Model(object):
         try:
             obj.add_to_model(self)
             return obj
-        except AttributeError:
-            raise TypeError("Error in %s.add_to_model."%obj)
+        except AttributeError as e:
+            raise TypeError("Error in %s.add_to_model:\n%s"%(obj, e))
 
     def get(self, target, default=None):
         """Return the Nengo object specified.
