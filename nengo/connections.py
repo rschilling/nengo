@@ -10,6 +10,8 @@ from . import simulator
 logger = logging.getLogger(__name__)
 
 
+
+
 class SignalConnection(object):
     """A SimpleConnection connects two Signals (or objects with signals)
     via a transform and a filter.
@@ -53,6 +55,12 @@ class SignalConnection(object):
     def transform(self, _transform):
         self._transform = np.asarray(_transform)
 
+    @staticmethod
+    def filter_coefs(pstc, dt):
+        pstc = max(pstc, dt)
+        decay = np.exp(-dt / pstc)
+        return decay, (1.0 - decay)
+
     def probe(self, to_probe='signal', sample_every=0.001, filter=None):
         if filter is not None and filter > self.filter:
             raise ValueError("Cannot create filtered probes on connections; "
@@ -74,7 +82,7 @@ class SignalConnection(object):
             model.add(self.signal)
 
             # Set up filters and transforms
-            o_coef, n_coef = core.filter_coefs(pstc=self.filter, dt=dt)
+            o_coef, n_coef = self.filter_coefs(pstc=self.filter, dt=dt)
             model._operators += [simulator.ProdUpdate(core.Constant(n_coef),
                                                  self.pre,
                                                  core.Constant(o_coef),
@@ -249,7 +257,7 @@ class DecodedConnection(SignalConnection):
 
     def _add_filter(self, model, dt):
         if self.filter is not None and self.filter > dt:
-            o_coef, n_coef = core.filter_coefs(pstc=self.filter, dt=dt)
+            o_coef, n_coef = self.filter_coefs(pstc=self.filter, dt=dt)
 
             model._operators += [simulator.ProdUpdate(core.Constant(self._decoders*n_coef),
                                                       self.pre,

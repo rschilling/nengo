@@ -28,12 +28,6 @@ up in a model.
 assert_named_signals = False
 
 
-def filter_coefs(pstc, dt):
-    pstc = max(pstc, dt)
-    decay = np.exp(-dt / pstc)
-    return decay, (1.0 - decay)
-
-
 class ShapeMismatch(ValueError):
     pass
 
