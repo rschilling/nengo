@@ -238,7 +238,7 @@ class DotInc(Operator):
             #    if the shapes are not compatible, we'll get a
             #    problem in Y[...] += inc
             try:
-                inc =  np.dot(A, X)
+                inc = np.dot(A, X)
             except Exception, e:
                 e.args = e.args + (A.shape, X.shape)
                 raise
@@ -278,13 +278,17 @@ class ProdUpdate(Operator):
         B = dct[self.B]
 
         def step():
-            val = np.dot(A,X)
+            try:
+                val = np.dot(A,X)
+            except Exception, e:
+                e.args = e.args + (A.shape, X.shape)
+                raise
             if val.shape != Y.shape:
                 if val.size == Y.size == 1:
                     val = np.asarray(val).reshape(Y.shape)
-                else:
-                    raise ValueError('shape mismatch in %s (%s vs %s)' %
-                                     (self.tag, val, Y))
+                # else:
+                #     raise ValueError('shape mismatch in %s (%s vs %s)' %
+                #                      (self.tag, val, Y))
             Y[...] *= B
             Y[...] += val
 

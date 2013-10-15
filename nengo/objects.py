@@ -379,7 +379,7 @@ class Ensemble(object):
             self.encoders /= np.sqrt(norm)
         self.encoders /= np.asarray(self.radius)
         self.encoders *= self.neurons.gain[:, np.newaxis]
-        model._operators += [simulator.DotInc(core.Constant(self.encoders),
+        model._operators += [simulator.DotInc(core.Signal(value=self.encoders),
                     self.signal, self.neurons.input_signal)]
 
         # Set up probes, but don't build them (done explicitly later)
@@ -480,8 +480,7 @@ class ConstantNode(object):
 
     def build(self, model, dt):
         # Set up signal
-        self.signal = core.Constant(self.output,
-                                    name=self.name)
+        self.signal = core.Signal(value=self.output, name=self.name)
         model.add(self.signal)
 
         # Set up probes
@@ -595,8 +594,9 @@ class Node(object):
         model.add(self.nonlinear)
 
         # Set up encoder
-        model._operators += [simulator.DotInc(core.Constant(
-            np.eye(self.dimensions)), self.signal, self.nonlinear.input_signal)]
+        model._operators += [simulator.DotInc(
+            core.Signal(value=np.eye(self.dimensions)),
+            self.signal, self.nonlinear.input_signal)]
 
         # Set up probes
         for probe in self.probes['output']:

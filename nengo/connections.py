@@ -10,8 +10,6 @@ from . import simulator
 logger = logging.getLogger(__name__)
 
 
-
-
 class SignalConnection(object):
     """A SimpleConnection connects two Signals (or objects with signals)
     via a transform and a filter.
@@ -37,7 +35,7 @@ class SignalConnection(object):
         self.probes = {'signal': []}
 
     def __str__(self):
-        return self.name + " (SimpleConnection)"
+        return self.name + " (" + self.__class__.__name__ + ")"
 
     def __repr__(self):
         return str(self)
@@ -83,17 +81,16 @@ class SignalConnection(object):
 
             # Set up filters and transforms
             o_coef, n_coef = self.filter_coefs(pstc=self.filter, dt=dt)
-            model._operators += [simulator.ProdUpdate(core.Constant(n_coef),
-                                                 self.pre,
-                                                 core.Constant(o_coef),
-                                                 self.signal)]
+            model._operators += [simulator.ProdUpdate(
+                core.Signal(value=n_coef), self.pre,
+                core.Signal(value=o_coef), self.signal)]
 
         else:
             # Signal should already be in the model
             self.signal = self.pre
 
     def _add_transform(self, model):
-        model._operators += [simulator.DotInc(core.Constant(self.transform),
+        model._operators += [simulator.DotInc(core.Signal(value=self.transform),
                                               self.signal,
                                               self.post)]
 
@@ -106,11 +103,6 @@ class SignalConnection(object):
         # Pre / post may be high level objects (ensemble, node) or signals
         if not core.is_signal(self.pre):
             self.pre = self.pre.signal
-#            if not core.is_constant(self.pre):
-#                logger.warning("SignalConnection is usually used for "
-#                               "connecting raw Signals and ConstantNodes. "
-#                               "Are you sure you shouldn't be using "
-#                               "DecodedConnection?")
 
         if not core.is_signal(self.post):
             self.post = self.post.signal
@@ -141,12 +133,6 @@ class NonlinearityConnection(SignalConnection):
         description
 
     """
-    def __init__(self, pre, post, **kwargs):
-        SignalConnection.__init__(self, pre, post, **kwargs)
-
-    def __str__(self):
-        return self.name + " (NonlinearityConnection)"
-
     def build(self, model, dt):
         # Pre must be a non-linearity
         if not isinstance(self.pre, core.Nonlinearity):
@@ -169,6 +155,18 @@ class NonlinearityConnection(SignalConnection):
 
         # Set up probes
         self._add_probes(model)
+
+
+class LearnedNonlinearityConnection(NonlinearityConnection):
+    def __init__(self, *args, **kwargs):
+        self.learn_weights = kwargs.pop('learn_weights')
+        NonlinearityConnection.__init__(self, *args, **kwargs)
+
+    def _add_transform(self, model):
+        self.weights = core.Signal()
+        model._operators += [simulator.DotInc(core.Signal(value=self.transform),
+                                              self.signal,
+                                              self.post)]
 
 class DecodedConnection(SignalConnection):
     """A DecodedConnection connects an ensemble to a Signal
@@ -252,22 +250,17 @@ class DecodedConnection(SignalConnection):
             return name + ":" + self.function.__name__
         return name
 
-    def __str__(self):
-        return self.name + " (DecodedConnection)"
-
     def _add_filter(self, model, dt):
         if self.filter is not None and self.filter > dt:
             o_coef, n_coef = self.filter_coefs(pstc=self.filter, dt=dt)
 
-            model._operators += [simulator.ProdUpdate(core.Constant(self._decoders*n_coef),
-                                                      self.pre,
-                                                      core.Constant(o_coef),
-                                                      self.signal)]
+            model._operators += [simulator.ProdUpdate(
+                core.Signal(value=self._decoders*n_coef), self.pre,
+                core.Signal(value=o_coef), self.signal)]
         else:
-            model._operators += [simulator.ProdUpdate(core.Constant(self._decoders),
-                                                      self.pre,
-                                                      core.Constant(0),
-                                                      self.signal)]
+            model._operators += [simulator.ProdUpdate(
+                core.Signal(value=self._decoders), self.pre,
+                core.Signal(value=0), self.signal)]
 
     def build(self, model, dt):
         # Pre must be an ensemble -- but, don't want to import objects
@@ -300,6 +293,13 @@ class DecodedConnection(SignalConnection):
 
         # Set up probes
         self._add_probes(model)
+
+
+class LearnedDecodedConnection(DecodedConnection):
+    def __init__(self, *args, **kwargs):
+        self.learn_decoders = kwargs.pop('learn_decoders')
+        DecodedConnection.__init__(self, *args, **kwargs)
+
 
 class ConnectionList(object):
     """A connection made up of several other connections."""

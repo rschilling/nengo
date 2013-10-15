@@ -93,14 +93,15 @@ class Model(object):
 
         self.t = self.add(core.Signal(name='t'))
         self.steps = self.add(core.Signal(name='steps'))
-        self.one = self.add(core.Constant([1.0], name='one'))
+        self.one = self.add(core.Signal(value=1.0, name='one'))
 
         # Automatically probe these
         self.probe(self.t)
         self.probe(self.steps)
 
         # -- steps counts by 1.0
-        self._operators += [simulator.ProdUpdate(core.Constant(1), self.one, core.Constant(1), self.steps)]
+        self._operators += [simulator.ProdUpdate(
+            core.Signal(value=1), self.one, core.Signal(value=1), self.steps)]
 
     def _get_new_seed(self):
         return (self.rng.randint(2**31-1) if self.fixed_seed is None
@@ -177,8 +178,10 @@ class Model(object):
     def prep_for_simulation(model, dt):
         model.name = model.name + ", dt=%f" % dt
         model.dt = dt
-        model._operators += [simulator.ProdUpdate(core.Constant(dt), model.one,
-                                                  core.Constant(1), model.t)]
+        model._operators += [simulator.ProdUpdate(core.Signal(value=dt),
+                                                  model.one,
+                                                  core.Signal(value=1),
+                                                  model.t)]
 
         # Sort all objects by name
         all_objs = sorted(model.objs.values(), key=lambda o: o.name)

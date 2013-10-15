@@ -32,11 +32,6 @@ class ShapeMismatch(ValueError):
     pass
 
 
-class TODO(NotImplementedError):
-    """Potentially easy NotImplementedError"""
-    pass
-
-
 class SignalView(object):
     def __init__(self, base, shape, elemstrides, offset, name=None):
         assert base is not None
@@ -126,7 +121,7 @@ class SignalView(object):
             #    but there are limits too, because we can only
             #    support view-based reshapes. So the strides have
             #    to work.
-            raise TODO('reshape of strided view')
+            raise NotImplementedError('reshape of strided view')
 
     def transpose(self, neworder=None):
         if neworder:
@@ -316,8 +311,11 @@ class SignalView(object):
 
 class Signal(SignalView):
     """Interpretable, vector-valued quantity within NEF"""
-    def __init__(self, n=1, dtype=np.float64, name=None):
-        self.n = n
+    def __init__(self, n=1, dtype=np.float64, name=None, value=None):
+        if value is not None:
+            self.value = np.asarray(value).ravel()
+        else:
+            self.n = n
         self._dtype = dtype
         if name is not None:
             self._name = name
@@ -334,16 +332,25 @@ class Signal(SignalView):
         return str(self)
 
     @property
+    def n(self):
+        return self.value.shape
+
+    @n.setter
+    def n(self, _n):
+        self.value = np.zeros(_n)
+
+    @property
     def shape(self):
-        return (self.n,)
+        return self.value.shape
 
     @property
     def size(self):
-        return self.n
+        return self.value.size
 
     @property
     def elemstrides(self):
-        return (1,)
+        s = np.asarray(self.value.strides)
+        return tuple(map(int, s / self.dtype.itemsize))
 
     @property
     def offset(self):
@@ -363,6 +370,10 @@ class Signal(SignalView):
             'n': self.n,
             'dtype': str(self.dtype),
         }
+
+
+def is_signal(sig):
+    return isinstance(sig, SignalView)
 
 
 class Probe(object):
@@ -387,48 +398,6 @@ class Probe(object):
             'dt': self.dt,
         }
 
-
-class Constant(Signal):
-    """A signal meant to hold a fixed value"""
-    def __init__(self, value, name=None):
-        self.value = np.asarray(value)
-
-        Signal.__init__(self, self.value.size, name=name)
-
-    def __str__(self):
-        if self.name is not None:
-            return "Constant(" + self.name + ")"
-        return "Constant(id " + str(id(self)) + ")"
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def shape(self):
-        return self.value.shape
-
-    @property
-    def elemstrides(self):
-        s = np.asarray(self.value.strides)
-        return tuple(map(int, s / self.dtype.itemsize))
-
-    def to_json(self):
-        return {
-            '__class__': self.__module__ + '.' + self.__class__.__name__,
-            'name': self.name,
-            'value': self.value.tolist(),
-        }
-
-
-def is_signal(sig):
-    return isinstance(sig, SignalView)
-
-
-def is_constant(sig):
-    """
-    Return True iff `sig` is (or is a view of) a Constant signal.
-    """
-    return isinstance(sig.base, Constant)
 
 class Nonlinearity(object):
     operator = None
@@ -456,7 +425,6 @@ class Nonlinearity(object):
 
 
 class Direct(Nonlinearity):
-
     operator = sim.SimDirect
 
     def __init__(self, n_in, n_out, fn, name=None):
@@ -466,8 +434,8 @@ class Direct(Nonlinearity):
 
         self.input_signal = Signal(n_in, name=name + '.input')
         self.output_signal = Signal(n_out, name=name + '.output')
-        self.bias_signal = Constant(np.zeros(n_in),
-                                    name=name + '.bias')
+        self.bias_signal = Signal(value=np.zeros(n_in),
+                                  name=name + '.bias')
 
         self.n_in = n_in
         self.n_out = n_out
@@ -512,7 +480,8 @@ class _LIFBase(Nonlinearity):
             name = "<%s%d>" % (self.__class__.__name__, id(self))
         self.input_signal = Signal(n_neurons, name=name + '.input')
         self.output_signal = Signal(n_neurons, name=name + '.output')
-        self.bias_signal = Constant(np.zeros(n_neurons), name=name + '.bias')
+        self.bias_signal = Signal(value=np.zeros(n_neurons),
+                                  name=name + '.bias')
 
         self.name = name
         self.n_neurons = n_neurons
@@ -707,3 +676,42 @@ class LIF(_LIFBase):
 
         voltage[:] = v * (1 - spiked)
         refractory_time[:] = new_refractory_time
+
+
+class _HPESBase(Nonlinearity):
+    # operator = sim.simHPES
+
+    def __str__(self):
+        return "Nonlinearity (id " + str(id(self)) + ")"
+
+    def __repr__(self):
+        return str(self)
+
+    def add_to_model(self, model):
+        # XXX: do we still need to append signals to model?
+        model.signals.append(self.bias_signal)
+        model.signals.append(self.input_signal)
+        model.signals.append(self.output_signal)
+        model._operators.append(
+            self.operator(
+                output=self.output_signal,
+                J=self.input_signal,
+                nl=self))
+        # -- encoders will be scheduled between this copy
+        #    and nl_op
+        model._operators.append(
+            sim.Copy(dst=self.input_signal, src=self.bias_signal))
+
+
+class _HPESBase(Nonlinearity):
+    def __init__(self, error):
+        self.error = error
+
+
+class HPESWeights(_HPESBase):
+    # operator = sim.simHPESWeights
+    pass
+
+class HPES(_HPESBase):
+    # operator = sim.simHPES
+    pass
