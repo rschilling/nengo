@@ -102,6 +102,24 @@ class TestModel(SimulatorTestCase):
                                     [0.00, .001, .002]))
         self.assertTrue(np.allclose(sim.data(m.steps).flatten(), [0, 1, 2]))
 
+    def test_get(self):
+        m = nengo.Model('test_get')
+        ens = m.make_ensemble('e', nengo.LIF(50), 1)
+        self.assertTrue(id(ens) == id(m.get(ens)))
+        self.assertTrue(id(ens) == id(m.get('e')))
+
+        sim = m.simulator(dt=0.001)
+        self.assertTrue(id(sim.get('e')) == id(sim.model.get('e')))
+        self.assertTrue(id(sim.get(ens)) == id(sim.model.get(ens)))
+        self.assertTrue(id(ens) != id(sim.get('e')))
+        self.assertTrue(id(ens) != id(sim.get(ens)))
+        self.assertTrue(id(ens) != id(sim.model.get('e')))
+        self.assertTrue(id(ens) != id(sim.model.get(ens)))
+
+        self.assertTrue(m.get('r') is None)
+        self.assertTrue(m.get(3) is None)
+        self.assertTrue(m.get(sim.model.get('e')) is None)
+
 
 if __name__ == "__main__":
     nengo.log_to_file('log.txt', debug=True)

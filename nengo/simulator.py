@@ -256,10 +256,7 @@ class Simulator(object):
         >>> from nengo.helpers import tuning_curves
         >>> print tuning_curves(A)
         """
-        toret = self.model.get(obj, "NotFound")
-        if toret == "NotFound":
-            toret = self.model.memo[id(obj)]
-        return toret
+        return self.model.get(obj)
 
     def reset(self):
         """TODO"""
