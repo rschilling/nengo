@@ -188,8 +188,7 @@ class DecodedConnection(SignalConnection):
         SignalConnection.__init__(self, pre, post, **kwargs)
 
         self.decoders = kwargs.get('decoders', None)
-        self.decoder_solver = kwargs.get('decoder_solver',
-                                         decsolve.least_squares)
+        self.decoder_solver = kwargs.get('decoder_solver', decsolve.lstsq_noisy)
         self.eval_points = kwargs.get('eval_points', None)
         self.function = kwargs.get('function', None)
         # self.modulatory = kwargs.get('modulatory', False)
@@ -262,6 +261,10 @@ class DecodedConnection(SignalConnection):
                                                       self.signal)]
 
     def build(self, model, dt):
+
+        seed = model._get_new_seed()
+        rng = np.random.RandomState(seed)
+
         # Pre must be an ensemble -- but, don't want to import objects
         assert self.pre.__class__.__name__ == "Ensemble"
         # Post could be a node / ensemble, etc
@@ -283,7 +286,7 @@ class DecodedConnection(SignalConnection):
                     [self.function(ep) for ep in self.eval_points])
                 if len(targets.shape) < 2:
                     targets.shape = targets.shape[0], 1
-            self._decoders = self.decoder_solver(activities, targets)
+            self._decoders = self.decoder_solver(activities, targets, rng)
 
         # Set up filters and transform
         self.pre = self.pre.neurons.output_signal
