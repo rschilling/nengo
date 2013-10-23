@@ -45,7 +45,7 @@ class TODO(NotImplementedError):
 
 class SignalView(object):
     def __init__(self, base, shape, elemstrides, offset, name=None):
-        assert base
+        assert base is not None
         self.base = base
         self.shape = tuple(shape)
         self.elemstrides = tuple(elemstrides)
@@ -116,6 +116,17 @@ class SignalView(object):
                 shape=shape,
                 elemstrides=elemstrides,
                 offset=self.offset)
+        elif self.size == 1:
+            # -- scalars can be reshaped to any number of (1, 1, 1...)
+            size = int(np.prod(shape))
+            if size != self.size:
+                raise ShapeMismatch(shape, self.shape)
+            elemstrides = [1] * len(shape)
+            return SignalView(
+                base=self.base,
+                shape=shape,
+                elemstrides=elemstrides,
+                offset=self.offset)
         else:
             # -- there are cases where reshaping can still work
             #    but there are limits too, because we can only
@@ -124,7 +135,22 @@ class SignalView(object):
             raise TODO('reshape of strided view')
 
     def transpose(self, neworder=None):
-        raise TODO('transpose')
+        if neworder:
+            raise NotImplementedError()
+        return SignalView(
+                self.base,
+                reversed(self.shape),
+                reversed(self.elemstrides),
+                self.offset,
+                self.name + '.T'
+                )
+
+    @property
+    def T(self):
+        if self.ndim < 2:
+            return self
+        else:
+            return self.transpose()
 
     def __getitem__(self, item):
         # -- copy the shape and strides
@@ -197,7 +223,41 @@ class SignalView(object):
             'offset': self.offset,
         }
 
+    def is_contiguous(self, return_range=False):
+        def ret_false():
+            if return_range:
+                return False, None, None
+            else:
+                return False
+        shape, strides, offset = self.structure
+        if not shape:
+            if return_range:
+                return True, offset, offset + 1
+            else:
+                return True
+        if len(shape) == 1:
+            if strides[0] == 1:
+                if return_range:
+                    return True, offset, offset + shape[0]
+                else:
+                    return True
+            else:
+                return ret_false()
+        if len(shape) == 2:
+            if strides == (1, shape[0]) or strides == (shape[1], 1):
+                if return_range:
+                    return True, offset, offset + shape[0] * shape[1]
+                else:
+                    return True
+            else:
+                return ret_false()
+
+        raise NotImplementedError()
+        #if self.ndim == 1 and self.elemstrides[0] == 1:
+            #return self.offset, self.offset + self.size
+
     def shares_memory_with(self, other):
+        # XXX: WRITE SOME UNIT TESTS FOR THIS FUNCTION !!!
         # Terminology: two arrays *overlap* if the lowermost memory addressed
         # touched by upper one is higher than the uppermost memory address
         # touched by the lower one.
@@ -206,23 +266,56 @@ class SignalView(object):
         # Overlap is a necessary but insufficient condition for *aliasing*.
         #
         # Aliasing is when two ndarrays refer a common memory location.
-        #
         if self.base is not other.base:
             return False
         if self is other or self.same_view_as(other):
             return True
         if self.ndim < other.ndim:
             return other.shares_memory_with(self)
-
-        assert self.ndim >= other.ndim
-        if self.ndim == 0:
-            # self.same_view_as(other) would have
-            # returned above if this were True.
+        if self.size == 0 or other.size == 0:
             return False
-        elif self.ndim == 1:
-            raise NotImplementedError()
+
+        assert self.ndim > 0
+        if self.ndim == 1:
+            # -- self is a vector view
+            #    and other is either a scalar or vector view
+            ae0, = self.elemstrides
+            be0, = other.elemstrides
+            amin = self.offset
+            amax = amin + self.shape[0] * ae0
+            bmin = other.offset
+            bmax = bmin + other.shape[0] * be0
+            if amin <= amax <= bmin <= bmax:
+                return False
+            elif bmin <= bmax <= amin <= amax:
+                return False
+            if ae0 == be0 == 1:
+                # -- strides are equal, and we've already checked for
+                #    non-overlap. They do overlap, so they are aliased.
+                return True
+            # TODO: look for common divisor of ae0 and be0
+            raise NotImplementedError('1d',
+                (self.structure, other.structure))
         elif self.ndim == 2:
-            raise NotImplementedError()
+            # -- self is a matrix view
+            #    and other is either a scalar, vector or matrix view
+            a_contig, amin, amax = self.is_contiguous(return_range=True)
+            if a_contig:
+                # -- self has a contiguous memory layout,
+                #    from amin up to but not including amax
+                b_contig, bmin, bmax = other.is_contiguous(return_range=True)
+                if b_contig:
+                    # -- other is also contiguous
+                    if amin <= amax <= bmin <= bmax:
+                        return False
+                    elif bmin <= bmax <= amin <= amax:
+                        return False
+                    else:
+                        return True
+                raise NotImplementedError('2d self:contig, other:discontig',
+                    (self.structure, other.structure))
+            raise NotImplementedError('2d',
+                (self.structure, other.structure))
         else:
             raise NotImplementedError()
 
@@ -305,7 +398,7 @@ class Constant(Signal):
     """A signal meant to hold a fixed value"""
     def __init__(self, value, name=None):
         self.value = np.asarray(value)
-        
+
         Signal.__init__(self, self.value.size, name=name)
 
     def __str__(self):
@@ -344,6 +437,8 @@ def is_constant(sig):
     return isinstance(sig.base, Constant)
 
 class Nonlinearity(object):
+    operator = None
+
     def __str__(self):
         return "Nonlinearity (id " + str(id(self)) + ")"
 
@@ -404,9 +499,6 @@ class Direct(Nonlinearity):
     def __repr__(self):
         return str(self)
 
-    def fn(self, J):
-        return J
-
     def to_json(self):
         return {
             '__class__': self.__module__ + '.' + self.__class__.__name__,
@@ -417,7 +509,19 @@ class Direct(Nonlinearity):
         }
 
 
-class _LIFBase(Nonlinearity):
+class GainNonlinearity(Nonlinearity):
+    _gain = None
+
+    @property
+    def gain(self):
+        return self._gain
+
+    @gain.setter
+    def gain(self, gain):
+        self._gain = gain
+
+
+class _LIFBase(GainNonlinearity):
     def __init__(self, n_neurons, tau_rc=0.02, tau_ref=0.002, name=None):
         if name is None:
             name = "<%s%d>" % (self.__class__.__name__, id(self))
@@ -512,16 +616,12 @@ class _LIFBase(Nonlinearity):
         self.bias = 1 - self.gain * intercepts
 
     def rates(self, J_without_bias):
-        """Return LIF firing rates for current J in Hz
+        """LIF firing rates in Hz
 
         Parameters
         ---------
-        J: ndarray of any shape
-            membrane voltages
-        tau_rc: broadcastable like J
-            XXX
-        tau_ref: broadcastable like J
-            XXX
+        J_without_bias: ndarray of any shape
+            membrane currents, without bias voltage
         """
         old = np.seterr(divide='ignore', invalid='ignore')
         try:
@@ -538,16 +638,17 @@ class _LIFBase(Nonlinearity):
 
 class LIFRate(_LIFBase):
     operator = sim.SimLIFRate
-    def math(self, J):
+    def math(self, dt, J):
         """Compute rates for input current (incl. bias)"""
         old = np.seterr(divide='ignore')
         try:
             j = np.maximum(J - 1, 0.)
-            r = 1. / (self.tau_ref + self.tau_rc * np.log1p(1./j))
+            r = dt / (self.tau_ref + self.tau_rc * np.log1p(1./j))
         finally:
             np.seterr(**old)
         return r
-                
+
+
 class LIF(_LIFBase):
     operator = sim.SimLIF
     def __init__(self, n_neurons, upsample=1, **kwargs):
@@ -565,14 +666,14 @@ class LIF(_LIFBase):
             self.operator(
                 output=self.output_signal,
                 J=self.input_signal,
-                nl=self, 
+                nl=self,
                 voltage=self.voltage,
                 refractory_time=self.refractory_time))
         # -- encoders will be scheduled between this copy
         #    and nl_op
         model._operators.append(
             sim.Copy(dst=self.input_signal, src=self.bias_signal))
-        
+
     def to_json(self):
         d = _LIFBase.to_json(self)
         d['upsample'] = self.upsample

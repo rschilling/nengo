@@ -4,7 +4,8 @@ import numpy as np
 
 from . import core
 from . import decoders as decsolve
-import simulator
+from . import simulator
+
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,10 @@ class SignalConnection(object):
             self.probes['signal'].append(probe)
         return probe
 
-    def _add_filter_transform(self, model, dt):
+    def add_to_model(self, model):
+        model.connections.append(self)
+
+    def _add_filter(self, model, dt):
         if self.filter is not None and self.filter > dt:
             # Set up signal
             name = self.pre.name + ".filtered(%f)" % self.filter
@@ -77,12 +81,13 @@ class SignalConnection(object):
                                                  self.signal)]
 
         else:
-            self.signal = self.pre
             # Signal should already be in the model
+            self.signal = self.pre
 
+    def _add_transform(self, model):
         model._operators += [simulator.DotInc(core.Constant(self.transform),
                                               self.signal,
-                                              model._get_output_view(self.post))]
+                                              self.post)]
 
     def _add_probes(self, model):
         for probe in self.probes['signal']:
@@ -93,17 +98,18 @@ class SignalConnection(object):
         # Pre / post may be high level objects (ensemble, node) or signals
         if not core.is_signal(self.pre):
             self.pre = self.pre.signal
-            if not core.is_constant(self.pre):
-                logger.warning("SignalConnection is usually used for "
-                               "connecting raw Signals and ConstantNodes. "
-                               "Are you sure you shouldn't be using "
-                               "DecodedConnection?")
+#            if not core.is_constant(self.pre):
+#                logger.warning("SignalConnection is usually used for "
+#                               "connecting raw Signals and ConstantNodes. "
+#                               "Are you sure you shouldn't be using "
+#                               "DecodedConnection?")
 
         if not core.is_signal(self.post):
             self.post = self.post.signal
 
         # Set up filters and transform
-        self._add_filter_transform(model, dt)
+        self._add_filter(model, dt)
+        self._add_transform(model)
 
         # Set up probes
         self._add_probes(model)
@@ -134,25 +140,27 @@ class NonlinearityConnection(SignalConnection):
         return self.name + " (NonlinearityConnection)"
 
     def build(self, model, dt):
-        # Pre must be a non-linearity
+        # Pre must be a nonlinearity
         if not isinstance(self.pre, core.Nonlinearity):
             self.pre = self.pre.nonlinear
-        #then get the output signal of the nonlinearity
+
+        # then get the output signal of the nonlinearity
         if not core.is_signal(self.pre):
             self.pre = self.pre.output_signal
+
         # Post could be a node / ensemble, etc
-        if not core.is_signal(self.post):
+        if isinstance(self.post, core.Nonlinearity):
+            if isinstance(self.post, core.GainNonlinearity):
+                self.transform = self.transform * self.post.gain[:,None]
+            self.post = self.post.input_signal
+        elif not core.is_signal(self.post):
             self.post = self.post.signal
 
-        # Set up signal
-        dims = self.pre.size
-        self.signal = core.Signal(dims, name=self.name)
-        model.add(self.signal)
-
         # Set up filters and transform
-        self._add_filter_transform(model, dt)
+        self._add_filter(model, dt)
+        self._add_transform(model)
 
-        # Set up decoders
+        # Set up probes
         self._add_probes(model)
 
 
@@ -241,7 +249,7 @@ class DecodedConnection(SignalConnection):
     def __str__(self):
         return self.name + " (DecodedConnection)"
 
-    def _add_filter_transform(self, model, dt):
+    def _add_filter(self, model, dt):
         if self.filter is not None and self.filter > dt:
             o_coef, n_coef = core.filter_coefs(pstc=self.filter, dt=dt)
 
@@ -255,15 +263,16 @@ class DecodedConnection(SignalConnection):
                                                       core.Constant(0),
                                                       self.signal)]
 
-        model._operators += [simulator.DotInc(core.Constant(self.transform),
-                                                  self.signal,
-                                                  model._get_output_view(self.post))]
-
     def build(self, model, dt):
         # Pre must be an ensemble -- but, don't want to import objects
         assert self.pre.__class__.__name__ == "Ensemble"
+
         # Post could be a node / ensemble, etc
-        if not core.is_signal(self.post):
+        if isinstance(self.post, core.Nonlinearity):
+            if isinstance(self.post, core.GainNonlinearity):
+                self.transform = self.transform * self.post.gain[:,None]
+            self.post = self.post.input_signal
+        elif not core.is_signal(self.post):
             self.post = self.post.signal
 
         # Set up signal
@@ -285,7 +294,8 @@ class DecodedConnection(SignalConnection):
 
         # Set up filters and transform
         self.pre = self.pre.neurons.output_signal
-        self._add_filter_transform(model, dt)
+        self._add_filter(model, dt)
+        self._add_transform(model)
 
         # Set up probes
         self._add_probes(model)
@@ -298,6 +308,9 @@ class ConnectionList(object):
         self.transform = transform
         self.probes = {}
 
+    def add_to_model(self, model):
+        model.connections.append(self)
+
     def build(self, model, dt):
         self.transform = np.asarray(self.transform)
 
@@ -305,13 +318,14 @@ class ConnectionList(object):
         for connection in self.connections:
             pre_dim = connection.dimensions
 
-            if self.transform.shape == ():
-                self.transform
+            if self.transform.ndim == 0:
                 trans = np.zeros((connection.post.dimensions, pre_dim))
-                trans[i:i+pre_dim] = self.transform
-
-            if self.transform.ndim == 2:
+                np.fill_diagonal(trans[i:i+pre_dim,:], self.transform)
+            elif self.transform.ndim == 2:
                 trans = self.transform[:,i:i+pre_dim]
+            else:
+                raise NotImplementedError(
+                    "Only transforms with 0 or 2 ndims are accepted")
 
             i += pre_dim
 
