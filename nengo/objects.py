@@ -348,7 +348,7 @@ class Ensemble(object):
 
         # Set up signal
         if signal is None:
-            self.signal = core.Signal(n=self.dimensions,
+            self.signal = core.Signal(n=(self.dimensions, 1),
                                       name=self.name + ".signal")
             model.add(self.signal)
         else:
@@ -379,6 +379,7 @@ class Ensemble(object):
             self.encoders /= np.sqrt(norm)
         self.encoders /= np.asarray(self.radius)
         self.encoders *= self.neurons.gain[:, np.newaxis]
+
         model._operators += [simulator.DotInc(core.Signal(value=self.encoders),
                     self.signal, self.neurons.input_signal)]
 

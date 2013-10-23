@@ -204,6 +204,7 @@ class Copy(Operator):
     def make_step(self, dct, dt):
         dst = dct[self.dst]
         src = dct[self.src]
+
         def step():
             dst[...] = src
         return step
@@ -228,29 +229,36 @@ class DotInc(Operator):
                 str(self.A), str(self.X), str(self.Y), self.tag)
 
     def make_step(self, dct, dt):
+        reshape = False
         X = dct[self.X]
         A = dct[self.A]
         Y = dct[self.Y]
         X = X.T if self.xT else X
-        def step():
-            # -- we check for size mismatch,
-            #    because incrementing scalar to len-1 arrays is ok
-            #    if the shapes are not compatible, we'll get a
-            #    problem in Y[...] += inc
-            try:
-                inc = np.dot(A, X)
-            except Exception, e:
-                e.args = e.args + (A.shape, X.shape)
-                raise
-            if inc.shape != Y.shape:
-                if inc.size == Y.size == 1:
-                    inc = np.asarray(inc).reshape(Y.shape)
-                else:
-                    raise ValueError('shape mismatch in %s %s x %s -> %s' % (
-                        self.tag, self.A, self.X, self.Y), (
-                        A.shape, X.shape, inc.shape, Y.shape))
-            Y[...] += inc
 
+        # -- we check for size mismatch,
+        #    because incrementing scalar to len-1 arrays is ok
+        #    if the shapes are not compatible, we'll get a
+        #    problem in Y[...] += inc
+        # -- do this here, not in step, to prevent redoing
+        #    these steps over and over again. Also raises
+        #    an error earlier.
+        try:
+            inc = np.dot(A, X)
+        except Exception, e:
+            e.args = e.args + (self.A, self.X)
+            raise
+        if inc.shape != Y.shape:
+            if inc.size == Y.size == 1:
+                reshape = True
+            else:
+                raise ValueError('shape mismatch in %s %s x %s -> %s' % (
+                    self.tag, self.A, self.X, self.Y), (
+                    A.shape, X.shape, inc.shape, Y.shape))
+        def step():
+            inc = np.dot(A, X)
+            if reshape:
+                inc = np.asarray(inc).reshape(Y.shape)
+            Y[...] += inc
         return step
 
 class ProdUpdate(Operator):
@@ -272,26 +280,29 @@ class ProdUpdate(Operator):
                 str(self.A), str(self.X), str(self.B), str(self.Y), self.tag)
 
     def make_step(self, dct, dt):
+        reshape = False
         X = dct[self.X]
         A = dct[self.A]
         Y = dct[self.Y]
         B = dct[self.B]
 
+        try:
+            val = np.dot(A,X)
+        except Exception, e:
+            e.args = e.args + (A.shape, X.shape)
+            raise
+        if val.shape != Y.shape:
+            if val.size == Y.size == 1:
+                reshape = True
+            else:
+                raise ValueError('shape mismatch in %s (%s vs %s)' %
+                                 (self.tag, val, Y))
         def step():
-            try:
-                val = np.dot(A,X)
-            except Exception, e:
-                e.args = e.args + (A.shape, X.shape)
-                raise
-            if val.shape != Y.shape:
-                if val.size == Y.size == 1:
-                    val = np.asarray(val).reshape(Y.shape)
-                # else:
-                #     raise ValueError('shape mismatch in %s (%s vs %s)' %
-                #                      (self.tag, val, Y))
+            val = np.dot(A,X)
+            if reshape:
+                val = np.asarray(val).reshape(Y.shape)
             Y[...] *= B
             Y[...] += val
-
         return step
 
 
@@ -334,10 +345,10 @@ class SimLIF(Operator):
     def init_sigdict(self, sigdict, dt):
         Operator.init_sigdict(self, sigdict, dt)
         sigdict[self.voltage] = np.zeros(
-            self.nl.n_in,
+            (self.nl.n_in, 1),
             dtype=self.voltage.dtype)
         sigdict[self.refractory_time] = np.zeros(
-            self.nl.n_in,
+            (self.nl.n_in, 1),
             dtype=self.refractory_time.dtype)
 
     def make_step(self, dct, dt):

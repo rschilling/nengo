@@ -22,7 +22,6 @@ class TestSimulator(SimulatorTestCase):
                          simulator.ProdUpdate(zero, zero, m.one, array)]
 
         sim = m.simulator(sim_class=self.Simulator)
-        print sim.signals
         self.assertEqual(0, sim.signals[sim.get(one)])
         self.assertEqual(5.0, sim.signals[sim.get(five)])
         self.assertTrue(np.all(

@@ -313,7 +313,7 @@ class Signal(SignalView):
     """Interpretable, vector-valued quantity within NEF"""
     def __init__(self, n=1, dtype=np.float64, name=None, value=None):
         if value is not None:
-            self.value = np.asarray(value).ravel()
+            self.value = value
         else:
             self.n = n
         self._dtype = dtype
@@ -324,9 +324,9 @@ class Signal(SignalView):
 
     def __str__(self):
         try:
-            return "Signal(" + self._name + ", " + str(self.n) + "D)"
+            return "Signal{" + self._name + ", shape=" + str(self.n) + "}"
         except AttributeError:
-            return "Signal (id " + str(id(self)) + ", " + str(self.n) + "D)"
+            return "Signal{id " + str(id(self)) + ", shape=" + str(self.n) + "}"
 
     def __repr__(self):
         return str(self)
@@ -359,6 +359,19 @@ class Signal(SignalView):
     @property
     def base(self):
         return self
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, _value):
+        _value = np.asarray(_value)
+        if _value.ndim == 0:
+            _value.shape = (1, 1)
+        if _value.ndim == 1:
+            _value = _value[:, np.newaxis]
+        self._value = _value
 
     def add_to_model(self, model):
         model.signals.append(self)
@@ -437,8 +450,8 @@ class Direct(Nonlinearity):
         self.bias_signal = Signal(value=np.zeros(n_in),
                                   name=name + '.bias')
 
-        self.n_in = n_in
-        self.n_out = n_out
+        self.n_in = self.input_signal.shape
+        self.n_out = self.output_signal.shape
         self.fn = fn
 
     def __deepcopy__(self, memo):
@@ -567,7 +580,7 @@ class _LIFBase(Nonlinearity):
         x = 1.0 / (1 - np.exp(
             (self.tau_ref - (1.0 / max_rates)) / self.tau_rc))
         self.gain = (1 - x) / (intercepts - 1.0)
-        self.bias = 1 - self.gain * intercepts
+        self.bias = (1 - self.gain * intercepts)[:, np.newaxis]
 
     def rates(self, J_without_bias):
         """Return LIF firing rates for current J in Hz
@@ -583,7 +596,7 @@ class _LIFBase(Nonlinearity):
         """
         old = np.seterr(divide='ignore', invalid='ignore')
         try:
-            J = J_without_bias + self.bias
+            J = J_without_bias + self.bias.T
             A = self.tau_ref - self.tau_rc * np.log(
                 1 - 1.0 / np.maximum(J, 0))
             # if input current is enough to make neuron spike,
