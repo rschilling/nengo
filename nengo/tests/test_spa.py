@@ -11,24 +11,10 @@ import nengo.networks
 
 
 class TestSPA(SimulatorTestCase):
-    def _test_connect(self):
-        model = nengo.Model('test_connect')
-        
-        A = model.add(nengo.objects.PassthroughNode('A', 10))
-        
-        B = model.add(nengo.objects.PassthroughNode('B', 3))
-        
-        A.connect_to(B, transform=np.zeros((10,3)))
-        
-        sim = model.simulator(sim_class=self.Simulator)        
-        sim.run(0.2)
-        
-        
-
-
     def test_basic(self):
     
         model = nengo.Model('test_spa')
+        D = 16
         
         class SpaSequence(spa.SPA):
             class Rules:
@@ -49,7 +35,7 @@ class TestSPA(SimulatorTestCase):
                     effect(state='A')
         
             def make(self):
-                self.add(spa.Memory('state', dimensions=16))
+                self.add(spa.Memory('state', dimensions=D))
                 self.add(spa.BasalGanglia('bg', rules=self.Rules))
                 self.add(spa.Thalamus('thal', 'bg'))
                 
@@ -61,16 +47,16 @@ class TestSPA(SimulatorTestCase):
         
         def input_func(t):
             if t<0.1: return s.modules['state'].inputs['default'][1].parse('A').v
-            else: return [0]*16
+            else: return [0]*D
         
         model.make_node('input', input_func)
-        model.connect('input', 'SPA.state.state')
+        model.connect('input', 'SPA.state.state.input')
         
         
-        model.probe('SPA.state.state', filter=0.03)
+        model.probe('SPA.state.state.output', filter=0.03)
         model.probe('SPA.bg.input', filter=0.03)
         model.probe('SPA.bg.output', filter=0.03)
-        model.probe('SPA.thal.rules', filter=0.03)
+        model.probe('SPA.thal.rules.output', filter=0.01)
         
         sim = model.simulator(sim_class=self.Simulator)
         
@@ -79,7 +65,7 @@ class TestSPA(SimulatorTestCase):
         
         import pylab
         pylab.subplot(4,1,1)
-        pylab.plot(sim.data(model.t), sim.data('SPA.state.state'))
+        pylab.plot(sim.data(model.t), sim.data('SPA.state.state.output'))
         pylab.ylabel('state')
         pylab.subplot(4,1,2)
         pylab.plot(sim.data(model.t), sim.data('SPA.bg.input'))
@@ -88,7 +74,7 @@ class TestSPA(SimulatorTestCase):
         pylab.plot(sim.data(model.t), sim.data('SPA.bg.output'))
         pylab.ylabel('BG output')        
         pylab.subplot(4,1,4)
-        pylab.plot(sim.data(model.t), sim.data('SPA.thal.rules'))
+        pylab.plot(sim.data(model.t), sim.data('SPA.thal.rules.output'))
         pylab.ylabel('thal rules')        
         pylab.show()
         
