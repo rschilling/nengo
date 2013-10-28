@@ -1,6 +1,5 @@
 import nengo
 from .. import objects
-from ..templates import EnsembleArray
 import nengo.networks as networks
 
 from .rules import Rules
@@ -25,24 +24,25 @@ class Thalamus(Module):
             
         N = self.bg.rules.count                
             
-        rules = self.add(EnsembleArray('rules', 
-                                        nengo.LIF(N*self.neurons_per_rule), N,
+            
+        rules = self.add(networks.Array('rules', 
+                                        N, nengo.LIF(self.neurons_per_rule), 1,
                                         threshold=nengo.objects.Uniform(self.rule_threshold, 1)))
         for ens in rules.ensembles:
             ens.encoders=[[1.0]]*self.neurons_per_rule                                        
         
         bias = self.add(objects.ConstantNode('bias', 1))
         
-        rules.connect_to(rules, transform=(np.eye(N)-1)*self.inhibit,
+        rules.output.connect_to(rules.input, transform=(np.eye(N)-1)*self.inhibit,
                                  filter=self.inhibit_filter)
                                  
-        bias.connect_to(rules, transform=np.ones((N,1)))                                         
+        bias.connect_to(rules.input, transform=np.ones((N,1)))                                         
     
-        self.bg.output.connect_to(rules)
+        self.bg.output.connect_to(rules.input)
             
     
         for output, transform in self.bg.rules.get_outputs().iteritems():
-            rules.connect_to(output, transform=transform, filter=self.output_filter)
+            rules.output.connect_to(output, transform=transform, filter=self.output_filter)
             
         
         

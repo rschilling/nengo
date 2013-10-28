@@ -15,9 +15,6 @@ class Memory(Module):
         self.state = self.add(networks.Array('state', dimensions/subdimensions,
                                 nengo.LIF(neurons_per_dimension*subdimensions),
                                 subdimensions))
-        #self.state = self.add(EnsembleArray('state', 
-        #                       nengo.LIF(neurons_per_dimension*dimensions), 
-        #                       dimensions, dimension_per_ensemble=16))
                                
         self.state.output.connect_to(self.state.input, filter=filter)
                                        
