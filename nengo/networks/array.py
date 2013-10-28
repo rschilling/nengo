@@ -30,6 +30,6 @@ class Array(Network):
         
         transform = np.eye(dimensions*length)    
         for i,e in enumerate(self.ensembles):
-            trans = transform[i*dimensions:(i+1)*dimensions,:]       
+            trans = transform[:,i*dimensions:(i+1)*dimensions]       
             e.connect_to(self.output, transform=trans, filter=None, function=function)
 
