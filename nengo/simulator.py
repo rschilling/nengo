@@ -1,9 +1,13 @@
+"""
+Simulator.py
+
+Reference simulator for nengo models.
+"""
 import logging
 import itertools
 from collections import defaultdict
 import time
 
-import networkx
 import networkx as nx
 import numpy as np
 
@@ -18,6 +22,7 @@ def is_base(sig):
 
 def is_view(sig):
     return not is_base(sig)
+
 
 class SignalDict(dict):
     """
@@ -247,10 +252,10 @@ class DotInc(Operator):
             Y[...] += inc
 
         return step
-    
+
 class ProdUpdate(Operator):
     """
-    Sets Y = A*X + B*Y
+    Sets Y <- dot(A, X) + B * Y
     """
     def __init__(self, A, X, B, Y, tag=None):
         self.A = A
@@ -278,13 +283,10 @@ class ProdUpdate(Operator):
                 if val.size == Y.size == 1:
                     val = np.asarray(val).reshape(Y.shape)
                 else:
-                    raise ValueError('shape mismatch in %s (%s vs %s)' % 
-                                     (self.tag, val.shape, Y.shape))
-            
+                    raise ValueError('shape mismatch in %s (%s vs %s)' %
+                                     (self.tag, val, Y))
             Y[...] *= B
             Y[...] += val
-
-            
 
         return step
 
@@ -300,7 +302,7 @@ class SimDirect(Operator):
         self.fn = nl.fn
 
         self.reads = [J]
-        self.sets = [output]
+        self.updates = [output]
 
     def make_step(self, dct, dt):
         J = dct[self.J]
@@ -323,8 +325,7 @@ class SimLIF(Operator):
         self.refractory_time = refractory_time
 
         self.reads = [J]
-        self.sets = [output]
-        self.updates = [self.voltage, self.refractory_time]
+        self.updates = [self.voltage, self.refractory_time, output]
 
     def init_sigdict(self, sigdict, dt):
         Operator.init_sigdict(self, sigdict, dt)
@@ -356,15 +357,14 @@ class SimLIFRate(Operator):
         self.nl = nl
 
         self.reads = [J]
-        self.sets = [output]
+        self.updates = [output]
 
     def make_step(self, dct, dt):
         J = dct[self.J]
         output = dct[self.output]
-        rates_fn = self.nl.rates
-        bias = self.nl.bias
+        rates_fn = self.nl.math
         def step():
-            output[...] = dt * rates_fn(J - bias)
+            output[...] = rates_fn(dt, J)
         return step
 
 
@@ -384,7 +384,7 @@ class Simulator(object):
 
         self.dg = self._init_dg()
         self._step_order = [node
-            for node in networkx.topological_sort(self.dg)
+            for node in nx.topological_sort(self.dg)
             if hasattr(node, 'make_step')]
         self._steps = [node.make_step(self._sigdict, model.dt)
             for node in self._step_order]
@@ -394,7 +394,7 @@ class Simulator(object):
 
     def _init_dg(self, verbose=False):
         operators = self.model._operators
-        dg = networkx.DiGraph()
+        dg = nx.DiGraph()
 
         for op in operators:
             dg.add_edges_from(itertools.product(op.reads + op.updates, [op]))
@@ -431,14 +431,31 @@ class Simulator(object):
         for node in sets:
             assert len(sets[node]) == 1, (node, sets[node])
 
+        # -- assert that only one op updates any particular view
+        for node in ups:
+            assert len(ups[node]) == 1, (node, ups[node])
+
+        # --- assert that any node that is incremented is also set/updated
+        for node in incs:
+            assert len(sets[node]+ups[node]) > 0, (node)
+
         # -- assert that no two views are both set and aliased
-        for node, other in itertools.combinations(sets, 2):
-            assert not node.shares_memory_with(other)
+        if len(sets) >= 2:
+            for node, other in itertools.combinations(sets, 2):
+                assert not node.shares_memory_with(other), \
+                    ("%s shares memory with %s" % (node, other))
+
+        # -- assert that no two views are both updated and aliased
+        if len(ups) >= 2:
+            for node, other in itertools.combinations(ups, 2):
+                assert not node.shares_memory_with(other), (
+                        node, other)
 
         # -- Scheduling algorithm for serial evaluation:
         #    1) All sets on a given base signal
         #    2) All incs on a given base signal
         #    3) All reads on a given base signal
+        #    4) All updates on a given base signal
 
         # -- incs depend on sets
         for node, post_ops in incs.items():
@@ -453,15 +470,6 @@ class Simulator(object):
             for other in by_base_writes[node.base]:
                 pre_ops += sets[other] + incs[other]
             dg.add_edges_from(itertools.product(set(pre_ops), post_ops))
-
-        # -- assert that only one op updates any particular view
-        for node in ups:
-            assert len(ups[node]) == 1, (node, ups[node])
-
-        # -- assert that no two views are both updated and aliased
-        for node, other in itertools.combinations(ups, 2):
-            assert not node.shares_memory_with(other), (
-                    node, other)
 
         # -- updates depend on reads, sets, and incs.
         for node, post_ops in ups.items():
@@ -491,7 +499,7 @@ class Simulator(object):
                     return self._sigdict[item]
                 except KeyError, e:
                     try:
-                        return self._sigdict[self.copied(item)]
+                        return self._sigdict[self.model.memo[id(item)]]
                     except KeyError:
                         raise e  # -- re-raise the original KeyError
 
@@ -500,7 +508,7 @@ class Simulator(object):
                     self._sigdict[item][...] = val
                 except KeyError, e:
                     try:
-                        self._sigdict[self.copied(item)][...] = val
+                        self._sigdict[self.model.memo[id(item)]][...] = val
                     except KeyError:
                         raise e  # -- re-raise the original KeyError
 
@@ -534,7 +542,7 @@ class Simulator(object):
 
         self.n_steps += 1
 
-    def copied(self, obj):
+    def get(self, obj):
         """Get the simulator's copy of a model object.
 
         Parameters
@@ -549,15 +557,20 @@ class Simulator(object):
 
         Examples
         --------
-        Manually set a raw signal value to ``5`` in the simulator
-        (advanced usage). [TODO: better example]
+        Get the simulator's version of an ensemble
+        in order to plot tuning curves
 
         >>> model = nengo.Model()
-        >>> foo = m.add(Signal(n=1))
+        >>> model.make_ensemble("A", nengo.LIF(4), 1)
         >>> sim = model.simulator()
-        >>> sim.signals[sim.copied(foo)] = np.asarray([5])
+        >>> A = sim.get("A")
+        >>> from nengo.helpers import tuning_curves
+        >>> print tuning_curves(A)
         """
-        return self.model.memo[id(obj)]
+        toret = self.model.get(obj, "NotFound")
+        if toret == "NotFound":
+            toret = self.model.memo[id(obj)]
+        return toret
 
     def reset(self):
         """TODO"""
@@ -565,7 +578,7 @@ class Simulator(object):
 
     def run(self, time_in_seconds):
         """Simulate for the given length of time."""
-        steps = int(time_in_seconds // self.model.dt)
+        steps = int(np.round(float(time_in_seconds) / self.model.dt))
         logger.debug("Running %s for %f seconds, or %d steps",
                      self.model.name, time_in_seconds, steps)
         self.run_steps(steps)
@@ -591,7 +604,7 @@ class Simulator(object):
             TODO: what are the dimensions?
         """
         if not isinstance(probe, core.Probe):
-            if isinstance(probe, str):
+            if self.model.probed.has_key(probe):
                 probe = self.model.probed[probe]
             else:
                 probe = self.model.probed[self.model.memo[id(probe)]]
@@ -601,5 +614,3 @@ class Simulator(object):
         """TODO
         """
         return np.asarray(self.probe_outputs[probe])
-
-

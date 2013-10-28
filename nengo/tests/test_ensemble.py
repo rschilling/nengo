@@ -13,44 +13,42 @@ logger = logging.getLogger(__name__)
 
 class TestEnsembleEncoders(unittest.TestCase):
 
-    def _test_encoders(self, n_dimensions):
-        n_neurons = 10
-        other_args = {'name': 'A',
-                      'neurons': nengo.LIF(n_neurons),
-                      'dimensions': n_dimensions}
+    def _test_encoders(self, n_neurons=10, n_dimensions=3, encoders=None):
+        if encoders is None:
+            encoders = np.random.randn(n_neurons, n_dimensions)
+            orig_encoders = encoders.copy()
 
-        logger.debug("No encoders")
-        self.assertIsNotNone(Ensemble(encoders=None, **other_args))
+        args = {'name': 'A',
+                'neurons': nengo.LIF(n_neurons),
+                'dimensions': n_dimensions}
 
-        logger.debug("All encoders")
-        encoders = np.random.randn(n_neurons, n_dimensions)
-        ens = Ensemble(encoders=encoders, **other_args)
-        self.assertTrue(np.allclose(encoders, ens.encoders))
-
-        # A previously accepted example that is no longer accepted
-        logger.debug("One encoder that all neurons will share")
-        with self.assertRaises(ShapeMismatch):
-            encoders = np.random.randn(n_dimensions)
-            ens = Ensemble(encoders=encoders, **other_args)
-
+        model = nengo.Model('_test_encoders')
+        ens = model.add(Ensemble(encoders=encoders, **args))
+        sim = model.simulator(dt=0.001)
+        self.assertTrue(np.allclose(orig_encoders, sim.model.get(ens).encoders))
 
     def test_encoders(self):
-        self._test_encoders(2)
-        self._test_encoders(10)
+        self._test_encoders(n_dimensions=3)
 
     def test_encoders_one_dimension(self):
-        self._test_encoders(1)
+        self._test_encoders(n_dimensions=1)
 
     def test_encoders_high_dimension(self):
-        self._test_encoders(20)
+        self._test_encoders(n_dimensions=20)
+
+    def test_encoders_wrong_shape(self):
+        n_neurons, n_dimensions = 10, 3
+        encoders = np.random.randn(n_dimensions)
+        with self.assertRaises(ShapeMismatch):
+            self._test_encoders(n_neurons, n_dimensions, encoders)
 
     def test_encoders_no_neurons(self):
         with self.assertRaises(ValueError):
-            Ensemble('A', nengo.LIF(0), 1)
+            self._test_encoders(0, 1)
 
     def test_encoders_no_dimensions(self):
         with self.assertRaises(ValueError):
-            Ensemble('A', nengo.LIF(1), 0)
+            self._test_encoders(1, 0)
 
 
 class TestEnsemble(SimulatorTestCase):
@@ -132,8 +130,8 @@ class TestEnsemble(SimulatorTestCase):
             plt.savefig('test_ensemble.test_scalar.pdf')
             plt.close()
 
-        target = np.sin(np.arange(4999) / 1000.)
-        target.shape = (4999, 1)
+        target = np.sin(np.arange(5000) / 1000.)
+        target.shape = (-1, 1)
         logger.debug("[New API] input RMSE: %f", rmse(target, sim.data('in')))
         logger.debug("[New API] A RMSE: %f", rmse(target, sim.data('A')))
         self.assertTrue(rmse(target, sim.data('in')) < 0.001)
@@ -161,9 +159,9 @@ class TestEnsemble(SimulatorTestCase):
             plt.savefig('test_ensemble.test_vector.pdf')
             plt.close()
 
-        target = np.vstack((np.sin(np.arange(4999) / 1000.),
-                            np.cos(np.arange(4999) / 1000.),
-                            np.arctan(np.arange(4999) / 1000.))).T
+        target = np.vstack((np.sin(np.arange(5000) / 1000.),
+                            np.cos(np.arange(5000) / 1000.),
+                            np.arctan(np.arange(5000) / 1000.))).T
         logger.debug("In RMSE: %f", rmse(target, sim.data('in')))
         self.assertTrue(rmse(target, sim.data('in') < 0.001))
         self.assertTrue(rmse(target, sim.data('A')) < 0.1)
@@ -177,7 +175,10 @@ class TestEnsemble(SimulatorTestCase):
         N = 80
         m.make_node('sin', output=np.sin)
         m.make_node('-0.5', output=-.5)
-        m.make_ensemble('factors', nengo.LIF(2 * N), dimensions=2, radius=1.5)
+        factors = m.make_ensemble(
+            'factors', nengo.LIF(2 * N), dimensions=2, radius=1.5)
+        factors.encoders = np.tile([[1, 1],[-1, 1],[1, -1],[-1, -1]],
+                                   (factors.n_neurons / 4, 1))
         m.make_ensemble('product', nengo.LIF(N), dimensions=1)
         m.connect('sin', 'factors', transform=[[1], [0]])
         m.connect('-0.5', 'factors', transform=[[0], [1]])
