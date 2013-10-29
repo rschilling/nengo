@@ -63,7 +63,12 @@ class Thalamus(Module):
                             dim/subdim, nengo.LIF(self.neurons_per_channel_dim*subdim), subdim))
             
             channel.output.connect_to(target.obj, filter=self.channel_pstc)                            
-            source.obj.connect_to(channel.input, filter=self.channel_pstc)
+            
+            if target.vocab is source.vocab:
+                transform = 1
+            else:
+                transform = source.vocab.transform_to(target.vocab)
+            source.obj.connect_to(channel.input, transform=transform, filter=self.channel_pstc)
             
             gate = self.add(objects.Ensemble('gate_%d_%s'%(index, source.name),
                                     nengo.LIF(self.neurons_gate), dimensions=1,
@@ -77,7 +82,5 @@ class Thalamus(Module):
                 gate.connect_to(e.neurons, transform=transform, filter=self.pstc_inhibit)
             
                                 
-            #print index, route
-        
         
 

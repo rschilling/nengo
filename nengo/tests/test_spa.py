@@ -15,6 +15,10 @@ class TestSPA(SimulatorTestCase):
     
         model = nengo.Model('test_spa')
         D = 16
+        D2 = 32
+        v1 = spa.Vocabulary(D)
+        v2 = spa.Vocabulary(D2)
+
         
         class SpaSequence(spa.SPA):
             class Rules:
@@ -38,8 +42,8 @@ class TestSPA(SimulatorTestCase):
                     effect(state=vision)    
         
             def make(self):
-                self.add(spa.Buffer('vision', dimensions=D))
-                self.add(spa.Memory('state', dimensions=D))
+                self.add(spa.Buffer('vision', dimensions=D, vocab=v1))
+                self.add(spa.Memory('state', dimensions=D2, vocab=v2))
                 self.add(spa.BasalGanglia('bg', rules=self.Rules))
                 self.add(spa.Thalamus('thal', 'bg'))
                 
@@ -50,7 +54,7 @@ class TestSPA(SimulatorTestCase):
         
         
         def input_func(t):
-            if t<0.5: return s.modules['vision'].inputs['default'][1].parse('C+LETTER').v
+            if t<0.5: return s.modules['vision'].inputs['default'][1].parse('B+LETTER').v
             else: return [0]*D
         
         model.make_node('input', input_func)

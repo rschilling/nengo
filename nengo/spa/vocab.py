@@ -146,12 +146,15 @@ class Vocabulary:
 
     def transform_to(self, other, keys=None):
         if keys is None:
-            keys = [k for f in self.keys if k in other.keys]
+            keys = set(self.keys)
+            keys = keys | set(other.keys)
+            
+            #keys = [k for f in self.keys if k in other.keys]
         t = np.zeros((other.dimensions,self.dimensions),dtype='f')
         for k in keys:
             a = self[k].v
             b = other[k].v
-            t += array([a*bb for bb in b])
+            t += np.array([a*bb for bb in b])
         return t
         
     def prob_cleanup(self,compare,vocab_size,steps=10000):
