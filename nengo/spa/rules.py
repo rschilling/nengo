@@ -8,14 +8,12 @@ class Input(object):
         self.name = name
         self.obj = obj
         self.vocab = vocab
-        self.rules = []
 
 class Output(object):
     def __init__(self, name, obj, vocab):
         self.name = name
         self.obj = obj
         self.vocab = vocab
-        self.rules = []
         
         
 
@@ -24,7 +22,8 @@ class Rule(object):
         self.name = name
         self.function = function
         self.matches = {}
-        self.effects = {}
+        self.effects_direct = {}
+        self.effects_route = []
 
         code = inspect.getsource(function)
         m = re.match(r'[^(]+\([^(]*\):',code)
@@ -45,8 +44,13 @@ class Rule(object):
         for k, v in kwargs.iteritems():
             if k not in self.outputs:
                 raise Exception('No module named "%s" found for effect in rule "%s"'%(k, self.name))
-            assert k not in self.effects    
-            self.effects[k] = v     
+            if isinstance(v, basestring):
+                assert k not in self.effects_direct    
+                self.effects_direct[k] = v     
+            elif isinstance(v, Input):
+                self.effects_route.append((self.outputs[k], v))
+            else:
+                raise Exception('Unknown effect "%s=%s" found in rule "%s"'%(k,v,self.name))
         
     def process(self, inputs, outputs):
         self.inputs = inputs
@@ -112,23 +116,30 @@ class Rules(object):
                 inputs[input.obj] = transform
         return inputs        
 
-    def get_outputs(self):
-        inputs = {}
+    def get_outputs_direct(self):
+        outputs = {}
     
         for name, output in self.outputs.iteritems():
             transform = []
             assert output.vocab is not None
             
             for rule in self.rules:
-                if name in rule.effects:
-                    row = output.vocab.parse(rule.effects[name]).v
+                if name in rule.effects_direct:
+                    row = output.vocab.parse(rule.effects_direct[name]).v
                 else:
                     row = [0]*output.vocab.dimensions
                 transform.append(row)    
             transform = np.array(transform)        
             if np.count_nonzero(transform)>0:
-                inputs[output.obj] = transform.T
-        return inputs        
+                outputs[output.obj] = transform.T
+        return outputs        
+        
+    def get_outputs_route(self):
+        routes = []
+        for i, rule in enumerate(self.rules):
+            for route in rule.effects_route:                
+                yield i, route
+            
 
             
         

@@ -33,8 +33,12 @@ class TestSPA(SimulatorTestCase):
                 def rule_5():
                     match(state='E')
                     effect(state='A')
+                def rule_6():
+                    match(vision='LETTER*2')
+                    effect(state=vision)    
         
             def make(self):
+                self.add(spa.Buffer('vision', dimensions=D))
                 self.add(spa.Memory('state', dimensions=D))
                 self.add(spa.BasalGanglia('bg', rules=self.Rules))
                 self.add(spa.Thalamus('thal', 'bg'))
@@ -46,11 +50,11 @@ class TestSPA(SimulatorTestCase):
         
         
         def input_func(t):
-            if t<0.1: return s.modules['state'].inputs['default'][1].parse('A').v
+            if t<0.5: return s.modules['vision'].inputs['default'][1].parse('C+LETTER').v
             else: return [0]*D
         
         model.make_node('input', input_func)
-        model.connect('input', 'SPA.state.state.input')
+        model.connect('input', 'SPA.vision.state.input')
         
         
         model.probe('SPA.state.state.output', filter=0.03)
