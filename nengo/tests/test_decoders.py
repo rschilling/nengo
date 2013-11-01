@@ -28,7 +28,7 @@ class TestDecoders(SimulatorTestCase):
         ensemble = model.make_ensemble('A', nengo.LIF(n_neurons), 1, seed=seed+1)
         model.connect(input, ensemble)
 
-        probe_filter = 0.05
+        probe_filter = 0.005
         model.probe(input, filter=probe_filter)
 
         # model.probe(ensemble, filter=probe_filter, decoder_solver=solver)
@@ -58,17 +58,24 @@ class TestDecoders(SimulatorTestCase):
         # return t, x, y, (eval_points, activities, dec_acts)
 
     def test_decoder_solvers(self):
-        solvers = [decsolve.lstsq,
-                   decsolve.lstsq_noisy,
-                   decsolve.lstsq_noisy_clip,
-                   decsolve.direct_L2,
-                   decsolve.direct_L2_low,
-                   decsolve.direct_L2_perneuron]
-                   # decsolve.dropout]
+        solvers = [
+            decsolve.lstsq,
+            decsolve.lstsq_noisy,
+            decsolve.lstsq_noisy_zero,
+            decsolve.lstsq_noisy_zeroclip,
+            decsolve.direct_L2,
+            decsolve.direct_L2_low,
+            decsolve.direct_L2_perneuron,
+            decsolve.direct_L2_zero,
+            decsolve.dropout,
+            decsolve.dropout_avg,
+                   ]
 
-        # n_neurons = 30
-        n_neurons = 50
-        n_iters = 1
+        # n_neurons = 10
+        n_neurons = 25
+        # n_neurons = 50
+        # n_neurons = 100
+        n_iters = 10
 
         seed = 893
 
