@@ -17,3 +17,10 @@ class Network(object):
         for obj in self.objects:
             obj.name = self.name + '.' +  obj.name
             model.add(obj)
+            
+            # if we've added a Node, we need to also connect it to the 't'
+            # signal so that it can change over time.
+            if isinstance(obj, objects.Node):
+                if len(obj.connections_in)==0:
+                    model.connect(model.t, obj, filter=None)
+            
