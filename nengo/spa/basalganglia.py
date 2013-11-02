@@ -16,6 +16,8 @@ class BasalGanglia(networks.BasalGanglia, Module):
         
     
     def on_add(self, spa):
+        Module.on_add(self, spa)
+        
         self.rules.process(spa)
         
         for input, transform in self.rules.get_inputs().iteritems():
