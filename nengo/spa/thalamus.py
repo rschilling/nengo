@@ -59,7 +59,7 @@ class Thalamus(Module):
             
             dim = target.vocab.dimensions
             subdim = self.channel_subdim
-            channel = self.add(networks.Array('channel_%d_%s'%(index, source.name), 
+            channel = self.add(networks.Array('channel_%d_%s'%(index, target.name), 
                             dim/subdim, nengo.LIF(self.neurons_per_channel_dim*subdim), subdim))
             
             channel.output.connect_to(target.obj, filter=self.channel_pstc)                            
@@ -70,11 +70,11 @@ class Thalamus(Module):
                 transform = source.vocab.transform_to(target.vocab)
             source.obj.connect_to(channel.input, transform=transform, filter=self.channel_pstc)
             
-            gate = self.add(objects.Ensemble('gate_%d_%s'%(index, source.name),
+            gate = self.add(objects.Ensemble('gate_%d_%s'%(index, target.name),
                                     nengo.LIF(self.neurons_gate), dimensions=1,
                                     intercept=(self.gate_threshold, 1)))
             gate.encoders = [[1]]*self.neurons_gate
-            rules.ensembles[index].connect_to(gate, pstc=self.pstc_to_gate)
+            rules.ensembles[index].connect_to(gate, pstc=self.pstc_to_gate, transform=-1)
             bias.connect_to(gate)
             
             transform = [[-1]]*(self.neurons_per_channel_dim*subdim)
