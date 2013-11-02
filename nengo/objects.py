@@ -310,22 +310,6 @@ class ConstantNode(object):
 
         model.objs[self.name] = self
 
-<<<<<<< HEAD
-    def build(self, model, dt):
-        # Set up signal
-        self.signal = core.Constant(self.output,
-                                    name=self.name)
-        model.add(self.signal)
-
-        # Set up probes
-        for probe in self.probes['output']:
-            probe.sig = self.signal
-            model.add(probe)
-            
-            
-
-=======
->>>>>>> 007c44ee2d155d5c95da5643f916caf23ffae44b
 
 class Node(object):
     """Provides arbitrary data to Nengo objects.
@@ -451,15 +435,7 @@ class SignalConnection(object):
     @property
     def transform(self):
         """TODO"""
-<<<<<<< HEAD
-        
-        # Set up signals
-        self.signal = core.Signal(self.dimensions,
-                                  name=self.name + ".signal")
-        model.add(self.signal)
-=======
         return self._transform
->>>>>>> 007c44ee2d155d5c95da5643f916caf23ffae44b
 
     @transform.setter
     def transform(self, _transform):
