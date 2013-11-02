@@ -3,9 +3,7 @@ from .. import objects
 class Network(object):
     def __init__(self, name, *args, **kwargs):
         self.name = name
-
         self.objects = []
-
         self.make(*args, **kwargs)
 
     def add(self, obj):
@@ -16,12 +14,6 @@ class Network(object):
         raise NotImplementedError("Networks should implement this function.")
 
     def add_to_model(self, model):
-        if model.objs.has_key(self.name):
-            raise ValueError("Something called " + self.name + " already "
-                             "exists. Please choose a different name.")
-
         for obj in self.objects:
             obj.name = self.name + '.' +  obj.name
             model.add(obj)
-
-
