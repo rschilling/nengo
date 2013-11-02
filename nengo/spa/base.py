@@ -34,4 +34,18 @@ class SPA(Network):
             assert obj.name not in self.modules
             self.modules[obj.name]=obj
             obj.on_add(self)
+            
+    def get_module_input(self, name):
+        if name in self.modules:
+            return self.modules[name].inputs['default']
+        elif '_' in name:
+            module, name = name.split('_', 1)
+            return self.modules[module].inputs[name]
+            
+    def get_module_output(self, name):
+        if name in self.modules:
+            return self.modules[name].outputs['default']
+        elif '_' in name:
+            module, name = name.split('_', 1)
+            return self.modules[module].outputs[name]
 

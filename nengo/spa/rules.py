@@ -3,12 +3,28 @@ import inspect
 
 import numpy as np
 
+
+
 class Input(object):
     def __init__(self, name, obj, vocab):
         self.name = name
         self.obj = obj
         self.vocab = vocab
+        
+    def __mul__(self, other):
+        if isinstance(other, basestring):
+            return TransformedInput(self.name, self.obj, self.vocab, other)
+        else:    
+            raise Exception('Rule error: multiplication of an Input ("%s") by unknown term ("%s")'%(self.name, self.other))
 
+class TransformedInput(object):
+    def __init__(self, name, obj, vocab, transform):
+        self.name = name
+        self.obj = obj
+        self.vocab = vocab
+        self.transform = transform
+    
+            
 class Output(object):
     def __init__(self, name, obj, vocab):
         self.name = name
@@ -48,6 +64,8 @@ class Rule(object):
                 assert k not in self.effects_direct    
                 self.effects_direct[k] = v     
             elif isinstance(v, Input):
+                self.effects_route.append((self.outputs[k], v))
+            elif isinstance(v, TransformedInput):
                 self.effects_route.append((self.outputs[k], v))
             else:
                 raise Exception('Unknown effect "%s=%s" found in rule "%s"'%(k,v,self.name))

@@ -68,6 +68,11 @@ class Thalamus(Module):
                 transform = 1
             else:
                 transform = source.vocab.transform_to(target.vocab)
+                
+            if hasattr(source, 'transform'):
+                t2 = source.vocab.parse(source.transform).get_convolution_matrix()
+                transform = np.dot(transform, t2)
+                
             source.obj.connect_to(channel.input, transform=transform, filter=self.channel_pstc)
             
             gate = self.add(objects.Ensemble('gate_%d_%s'%(index, target.name),
