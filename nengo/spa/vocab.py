@@ -3,7 +3,7 @@ import math
 
 from . import pointer
 
-class Vocabulary:
+class Vocabulary(object):
     def __init__(self, dimensions, randomize=True, unitary=False, 
                        max_similarity=0.1, include_pairs=False, 
                        include_identity=True):
@@ -19,6 +19,7 @@ class Vocabulary:
         self.vectors=None
         self.vector_pairs=None
         self.include_pairs=include_pairs
+        self._zero = None
         
     def create_pointer(self, attempts=100):
         if self.randomize:  
@@ -93,8 +94,19 @@ class Vocabulary:
                     self.vector_pairs=np.resize(self.vector_pairs,(len(self.key_pairs),self.dimensions))
                     self.vector_pairs[-1,:]=v
 
-    def parse(self,text):
-        return eval(text,{},self)
+    def parse(self, text):
+        value = eval(text, {}, self)
+        if value == 0:
+            value = self.zero
+        if not isinstance(value, pointer.SemanticPointer):  
+            raise Exception('Vocabulary parsing error: result of "%s" was not a semantic pointer'%text)
+        return value
+        
+    @property
+    def zero(self):
+        if self._zero is None:
+            self._zero = pointer.SemanticPointer(data=np.zeros(self.dimensions))
+        return self._zero    
         
     def text(self, v, threshold=0.1, minimum_count=1, include_pairs=True, 
                    join='+', maximum_count=5, terms=None, normalize=False):
