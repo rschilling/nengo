@@ -2,7 +2,7 @@ from __future__ import absolute_import
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+from . import objects
 
 def rasterplot(time, spikes, ax=None, **kwargs):
     '''Generate a raster plot of the provided spike data
@@ -53,5 +53,56 @@ def rasterplot(time, spikes, ax=None, **kwargs):
             ax.plot(time[spikes[:,i] > 0],
                     np.ones_like(np.where(spikes[:,i] > 0)).T + i, ',',
                     color=colors[i], **kwargs)
+
+    return ax
+
+def networkgraph(model, ax=None):
+    import networkx as nx
+
+    if ax is None:
+        ax = plt.gca()
+
+    G = nx.DiGraph()
+
+    objs = model.objs.values()
+    cons = []
+    for o in objs:
+        cons.extend(o.connections_out)
+    # connections.extend(c for c in o.connections_out for o in objects)
+    cons.extend(model.connections)
+
+    # nodes = {}
+    # for o in objects:
+    #     nodes[o] = G.add_node(o.name)
+
+    # for c in connections:
+    #     if c.pre in nodes and c.post in nodes:
+    #         G.add_edge(c.pre.name, c.post.name)
+
+    nodes = {}
+    for c in cons:
+        print c.pre.name, c.post.name
+        if c.pre in objs and c.post in objs:
+            # if c.pre not in nodes:
+            #     nodes[c.pre] = G.add_node(c.pre.name)
+            # if c.post not in nodes:
+            #     nodes[c.post] = G.add_node(c.post.name)
+
+            if isinstance(c, objects.DecodedConnection):
+                if c.function is not None:
+                    name = c.function.func_name
+                    # fn_str = name if name != '<lambda>' else
+                    fn_str = name
+                else:
+                    fn_str = str(c.transform)
+            else:
+                fn_str = ''
+            G.add_edge(c.pre.name, c.post.name, label=fn_str)
+
+    pos = nx.spring_layout(G)
+    nx.draw_networkx(G, pos, ax=ax, node_color='w', node_size=3000)
+
+    edge_labels = dict(((u,v), d['label']) for u,v,d in G.edges(data=True))
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
 
     return ax

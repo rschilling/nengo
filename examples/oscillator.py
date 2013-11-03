@@ -1,58 +1,27 @@
-from .. import nengo as nengo
-from ..nengo.connection import gen_transform
 
-## This example demonstrates how to create a neuronal ensemble that acts as an oscillator.
-##   In this example, the oscillatory is a 2-D ring oscillator. The function an integrator 
-##   implements can be written in the following control theoretic equation:
-##     
-##     a_dot(t) = A_matrix * a(t)
-##
-##     where A_matrix = [ 0 w]
-##                      [-w 0]
-##    
-##     The NEF equivalent A_matrix for this oscillator is: A_matrix = [ 1 1]
-##                                                                    [-1 1]
-##
-##   The input to the network is needed to kick the system into its stable oscillatory state.
-##
-## Network diagram:
-##
-##                    .----.
-##                    v    | 
-##      [Input] ---> (A) --'
-##
-##
-## Network behaviour:
-##   A = A_matrix * A
-## 
+# Create the model object
+import nengo
+model = nengo.Model('Oscillator')
 
-# Create the nengo model
-model = nengo.Model('Oscillator')           # Create the network object
+# Create the ensemble for the oscillator
+model.make_ensemble('Neurons', nengo.LIF(200), dimensions=2)
 
-# Make controllable inputs
-def start_input(t):
-    if t < 0.1:
-        return [1,0]
-    else:
-        return [0,0]
+import nengo.helpers
 
-model.make_node('Input', start_input)       # Create an input function that gets set to 
-                                            #   to zero after 0.1s, just to get things going
+# Create an input signal
+model.make_node('Input', output=nengo.helpers.piecewise({0:[1,0],0.1:[0,0]}))
 
-# Create the neuronal ensembles
-model.make_ensemble('A', 200, 2)            # Make a population with 200 neurons, 2 dimensions
+# Connect the input signal to the neural ensemble
+model.connect('Input','Neurons')
 
-# Create the connections within the model
-model.connect('Input', 'A')                 # Connect the input population to the oscillator
+# Create the feedback connection
+model.connect('Neurons','Neurons', transform=[[1,1],[-1,1]], filter=0.1)
 
-model.connect('A', 'A', filter = {'type': 'ExponentialPSC', 'pstc': 0.1},
-              transform = [[1,1], [-1,1]])  # Recurrently connect the population 
-                                            #   with the connection matrix for a 
-                                            #   simple harmonic oscillator mapped 
-                                            #   to neurons with the NEF
+import matplotlib.pyplot as plt
+import nengo.matplotlib
 
-# Build the model
-model.build()                               # Generate model parameters
-
-# Run the model
-model.run(1)                                # Run for 1 second
+# plt.ion()
+plt.figure(1)
+# plt.clf()
+nengo.matplotlib.networkgraph(model)
+plt.show()
