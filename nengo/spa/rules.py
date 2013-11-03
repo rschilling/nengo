@@ -14,8 +14,10 @@ class Input(object):
     def __mul__(self, other):
         if isinstance(other, basestring):
             return TransformedInput(self.name, self.obj, self.vocab, other)
+        elif isinstance(other, Input):
+            return ConvolvedInput(self.name, self.obj, self.vocab, other)
         else:    
-            raise Exception('Rule error: multiplication of an Input ("%s") by unknown term ("%s")'%(self.name, self.other))
+            raise Exception('Rule error: multiplication of an Input ("%s") by unknown term ("%s")'%(self.name, other))
 
 class TransformedInput(object):
     def __init__(self, name, obj, vocab, transform):
@@ -23,7 +25,14 @@ class TransformedInput(object):
         self.obj = obj
         self.vocab = vocab
         self.transform = transform
-    
+
+class ConvolvedInput(object):
+    def __init__(self, name, obj, vocab, convolve):
+        self.name = name
+        self.obj = obj
+        self.vocab = vocab
+        self.convolve = convolve
+        
             
 class Output(object):
     def __init__(self, name, obj, vocab):
@@ -63,9 +72,7 @@ class Rule(object):
             if isinstance(v, basestring):
                 assert k not in self.effects_direct    
                 self.effects_direct[k] = v     
-            elif isinstance(v, Input):
-                self.effects_route.append((self.outputs[k], v))
-            elif isinstance(v, TransformedInput):
+            elif isinstance(v, (Input, TransformedInput, ConvolvedInput)):
                 self.effects_route.append((self.outputs[k], v))
             else:
                 raise Exception('Unknown effect "%s=%s" found in rule "%s"'%(k,v,self.name))
