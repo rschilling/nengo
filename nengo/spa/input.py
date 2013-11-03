@@ -24,6 +24,6 @@ class Input(Module):
             val = vocab.parse(self.value).v
             self.input = self.add(objects.ConstantNode('input', val))
     
-        self.input.connect_to(target)        
+        self.input.connect_to(target, filter=None)        
         
 

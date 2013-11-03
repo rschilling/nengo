@@ -47,7 +47,7 @@ class Thalamus(Module):
         rules.output.connect_to(rules.input, transform=(np.eye(N)-1)*self.inhibit,
                                  filter=self.pstc_inhibit)
                                  
-        bias.connect_to(rules.input, transform=np.ones((N,1)))                                         
+        bias.connect_to(rules.input, transform=np.ones((N,1)), filter=None)                                         
     
         self.bg.output.connect_to(rules.input)
             
@@ -65,7 +65,7 @@ class Thalamus(Module):
                                     intercept=(self.gate_threshold, 1)))
             gate.encoders = [[1]]*self.neurons_gate
             rules.ensembles[index].connect_to(gate, pstc=self.pstc_to_gate, transform=-1)
-            bias.connect_to(gate)
+            bias.connect_to(gate, filter=None)
 
             
             if hasattr(source, 'convolve'):
