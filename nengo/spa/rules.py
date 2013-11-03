@@ -6,32 +6,41 @@ import numpy as np
 
 
 class Input(object):
-    def __init__(self, name, obj, vocab):
+    def __init__(self, name, obj, vocab, invert=False):
         self.name = name
         self.obj = obj
         self.vocab = vocab
+        self.invert = invert
         
     def __mul__(self, other):
         if isinstance(other, basestring):
-            return TransformedInput(self.name, self.obj, self.vocab, other)
+            return TransformedInput(self.name, self.obj, self.vocab, self.invert, other)
         elif isinstance(other, Input):
-            return ConvolvedInput(self.name, self.obj, self.vocab, other)
+            return ConvolvedInput(self.name, self.obj, self.vocab, self.invert, other)
         else:    
             raise Exception('Rule error: multiplication of an Input ("%s") by unknown term ("%s")'%(self.name, other))
-
+    def __invert__(self):
+        return Input(self.name, self.obj, self.vocab, not self.invert) 
+            
 class TransformedInput(object):
-    def __init__(self, name, obj, vocab, transform):
+    def __init__(self, name, obj, vocab, invert, transform):
         self.name = name
         self.obj = obj
         self.vocab = vocab
+        self.invert = invert
         self.transform = transform
+    def __invert__(self):
+        return TransformedInput(self.name, self.obj, self.vocab, not self.invert, self.transform) 
 
 class ConvolvedInput(object):
-    def __init__(self, name, obj, vocab, convolve):
+    def __init__(self, name, obj, vocab, invert, convolve):
         self.name = name
         self.obj = obj
         self.vocab = vocab
+        self.invert = invert
         self.convolve = convolve
+    def __invert__(self):
+        return ConvolvedInput(self.name, self.obj, self.vocab, not self.invert, self.convolve) 
         
             
 class Output(object):

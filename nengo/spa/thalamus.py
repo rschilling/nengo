@@ -74,7 +74,9 @@ class Thalamus(Module):
                 #   should be changed to specify neurons per ensemble
                 n_neurons_d = self.neurons_cconv * (
                     2*dim - (2 if dim % 2 == 0 else 1))            
-                channel = self.add(networks.CircularConvolution('cconv', nengo.LIF(n_neurons_d), dim))
+                channel = self.add(networks.CircularConvolution('cconv_%d_%s'%(index, target.name), 
+                                nengo.LIF(n_neurons_d), dim,
+                                invert_a = source.invert, invert_b = source.convolve.invert))
                 
                 channel.output.connect_to(target.obj, filter=self.channel_pstc)                            
 
@@ -111,6 +113,10 @@ class Thalamus(Module):
                     
                 
             else:
+            
+                if source.invert:
+                    raise Exception('Inverting on a communication channel not supported yet')
+            
                 subdim = self.channel_subdim
                 channel = self.add(networks.Array('channel_%d_%s'%(index, target.name), 
                                 dim/subdim, nengo.LIF(self.neurons_per_channel_dim*subdim), subdim))
